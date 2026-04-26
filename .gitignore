@@ -1,0 +1,25 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# build output
+.next/
+dist/
+*.tsbuildinfo
+
+# galaxy data (user-local, never commit)
+/data/
+/bridge/
+
+# env
+.env
+.env.local
+
+# editor
+.DS_Store
+.vscode/*
+!.vscode/settings.json.example
+.idea/
+
+# test
+coverage/

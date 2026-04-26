@@ -1,0 +1,25 @@
+{
+  "name": "galaxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "个人立体知识库",
+  "engines": {
+    "node": ">=20.10",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @galaxy/web dev",
+    "build": "pnpm --filter @galaxy/web build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @galaxy/db db:generate",
+    "db:studio": "pnpm --filter @galaxy/db db:studio"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  },
+  "packageManager": "pnpm@9.1.0"
+}
