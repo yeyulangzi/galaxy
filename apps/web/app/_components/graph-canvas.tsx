@@ -39,33 +39,70 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
         {
           selector: 'node',
           style: {
-            'background-color': '#0f172a',
+            'background-color': '#475569',
+            'border-width': 2,
+            'border-color': '#64748b',
             label: 'data(label)',
-            color: '#0f172a',
-            'font-size': 12,
+            color: '#cbd5e1',
+            'font-size': 11,
+            'font-weight': 500,
             'text-valign': 'bottom',
-            'text-margin-y': 6,
-            width: 28,
-            height: 28,
+            'text-margin-y': 8,
+            'text-outline-color': '#0c1120',
+            'text-outline-width': 2,
+            width: 24,
+            height: 24,
+            'overlay-opacity': 0,
+            'transition-property': 'background-color border-color width height',
+            'transition-duration': 200,
           },
         },
         {
           selector: 'node[?seed]',
-          style: { 'background-color': '#f59e0b', width: 36, height: 36 },
+          style: {
+            'background-color': '#d4a017',
+            'border-color': '#fbbf24',
+            width: 32,
+            height: 32,
+          },
         },
-        { selector: 'node:selected', style: { 'border-width': 3, 'border-color': '#3b82f6' } },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-width': 3,
+            'border-color': '#fbbf24',
+            'background-color': '#d4a017',
+            width: 30,
+            height: 30,
+          },
+        },
+        {
+          selector: 'node.pending-source',
+          style: {
+            'border-color': '#38bdf8',
+            'border-style': 'dashed',
+            'border-width': 3,
+          },
+        },
         {
           selector: 'edge',
           style: {
-            width: 1.5,
-            'line-color': '#94a3b8',
-            'target-arrow-color': '#94a3b8',
+            width: 1,
+            'line-color': '#334155',
+            'target-arrow-color': '#475569',
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             label: 'data(label)',
-            'font-size': 10,
-            color: '#64748b',
+            'font-size': 9,
+            color: '#475569',
+            'text-outline-color': '#0c1120',
+            'text-outline-width': 1.5,
+            opacity: 0.7,
           },
+        },
+        {
+          selector: 'edge:selected',
+          style: { 'line-color': '#fbbf24', 'target-arrow-color': '#fbbf24', opacity: 1, width: 2 },
         },
       ],
     })
@@ -118,6 +155,20 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
   }, [nodes, edges])
 
   return (
-    <div ref={containerRef} className="h-full w-full bg-muted/20" />
+    <div className="relative h-full w-full overflow-hidden">
+      {/* Subtle radial glow behind graph */}
+      <div className="pointer-events-none absolute inset-0" style={{
+        background: 'radial-gradient(ellipse 60% 50% at 50% 45%, hsl(225 30% 12%) 0%, hsl(230 25% 7%) 70%)',
+      }} />
+      <div ref={containerRef} className="absolute inset-0" />
+      {/* Empty state */}
+      {nodes.length === 0 && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 animate-fade-in">
+          <div className="text-5xl">✨</div>
+          <p className="text-lg font-medium text-muted-foreground">你的知识星图还是空的</p>
+          <p className="text-sm text-muted-foreground/70">点击右下角 ➕ 投喂第一条知识</p>
+        </div>
+      )}
+    </div>
   )
 }

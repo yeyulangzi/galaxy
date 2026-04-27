@@ -109,22 +109,25 @@ export default function SettingsPage() {
     }
   }
 
-  if (loading || !settings) return <><NavBar /><div className="p-6 text-center text-muted-foreground">加载中…</div></>
+  if (loading || !settings) return <><NavBar /><div className="ml-16 p-6 text-center text-muted-foreground">加载中…</div></>
 
   return (
     <>
       <NavBar />
-      <div className="mx-auto max-w-2xl space-y-8 p-6">
-        <h1 className="text-2xl font-bold">⚙️ 设置</h1>
+      <div className="ml-16 mx-auto max-w-2xl space-y-6 px-8 py-8 animate-fade-in">
+        <div className="mb-2">
+          <h1 className="text-2xl font-semibold tracking-tight">设置</h1>
+          <p className="mt-1 text-sm text-muted-foreground">管理 AI 服务、模型和系统偏好</p>
+        </div>
 
         {/* Provider API Key 配置 */}
-        <section className="space-y-4 rounded-lg border p-4">
-          <div>
-            <h2 className="text-lg font-semibold">大模型 API Key</h2>
-            <p className="text-sm text-muted-foreground">配置各 Provider 的 API Key，至少配置一个才能使用 AI 功能。</p>
+        <section className="rounded-xl border border-border/60 bg-[hsl(var(--card))] p-5 animate-slide-up">
+          <div className="mb-4">
+            <h2 className="text-base font-semibold">大模型 API Key</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">至少配置一个 Provider 才能使用 AI 功能</p>
           </div>
 
-          <div className="space-y-3">
+          <div className="divide-y divide-border/40">
             {PROVIDERS.map((provider) => {
               const cred = maskedCredentials[provider.id]
               const hasKey = cred?.has_key ?? false
@@ -133,13 +136,24 @@ export default function SettingsPage() {
               const isSaving = savingKeys[provider.id] ?? false
 
               return (
-                <div key={provider.id} className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <Label className="min-w-[120px] font-medium">{provider.label}</Label>
+                <div key={provider.id} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{provider.label}</span>
+                      {hasKey && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--success))]/15 px-2 py-0.5 text-[10px] font-semibold text-[hsl(var(--success))]">
+                          <Check className="h-3 w-3" /> 已配置
+                        </span>
+                      )}
+                    </div>
                     {hasKey && (
-                      <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                        <Check className="h-3 w-3" /> 已配置
-                      </span>
+                      <button
+                        onClick={() => removeApiKey(provider.id)}
+                        disabled={isSaving}
+                        className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        移除
+                      </button>
                     )}
                   </div>
                   <div className="flex gap-2">
@@ -148,35 +162,25 @@ export default function SettingsPage() {
                         type={isVisible ? 'text' : 'password'}
                         value={inputValue}
                         onChange={(e) => setApiKeys((prev) => ({ ...prev, [provider.id]: e.target.value }))}
-                        placeholder={hasKey ? `当前: ${cred!.masked_key}  (输入新值可覆盖)` : provider.placeholder}
-                        className="pr-10"
+                        placeholder={hasKey ? `${cred!.masked_key}  · 输入新值覆盖` : provider.placeholder}
+                        className="h-9 bg-[hsl(var(--muted))]/50 border-border/40 pr-9 text-sm placeholder:text-muted-foreground/50"
                       />
                       <button
                         type="button"
                         onClick={() => toggleKeyVisibility(provider.id)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground transition-colors"
                       >
-                        {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {isVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                       </button>
                     </div>
                     <Button
                       size="sm"
                       onClick={() => saveApiKey(provider.id)}
                       disabled={!inputValue.trim() || isSaving}
+                      className="h-9 px-4 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--primary))]/90"
                     >
-                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : '保存'}
+                      {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '保存'}
                     </Button>
-                    {hasKey && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => removeApiKey(provider.id)}
-                        disabled={isSaving}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        移除
-                      </Button>
-                    )}
                   </div>
                 </div>
               )
@@ -185,28 +189,27 @@ export default function SettingsPage() {
         </section>
 
         {/* 默认 Provider 和 Model */}
-        <section className="space-y-4 rounded-lg border p-4">
-          <div>
-            <h2 className="text-lg font-semibold">默认大模型</h2>
-            <p className="text-sm text-muted-foreground">选择投喂 AI 抽取使用的默认 Provider 和模型。</p>
+        <section className="rounded-xl border border-border/60 bg-[hsl(var(--card))] p-5 animate-slide-up" style={{ animationDelay: '50ms' }}>
+          <div className="mb-4">
+            <h2 className="text-base font-semibold">默认大模型</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">投喂时 AI 抽取使用的 Provider 和模型</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Provider</Label>
+              <Label className="text-xs text-muted-foreground">Provider</Label>
               <select
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex h-9 w-full rounded-lg border border-border/40 bg-[hsl(var(--muted))]/50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40 transition-shadow"
                 value={defaultProvider}
                 onChange={(e) => {
                   setDefaultProvider(e.target.value)
-                  // 切换 provider 时自动设置该 provider 的第一个推荐模型
                   const providerDef = PROVIDERS.find((p) => p.id === e.target.value)
                   if (providerDef && providerDef.models.length > 0) {
                     setDefaultModel(providerDef.models[0])
                   }
                 }}
               >
-                <option value="">请选择 Provider</option>
+                <option value="">选择 Provider</option>
                 {PROVIDERS.map((p) => (
                   <option key={p.id} value={p.id} disabled={!configuredProviders.includes(p.id)}>
                     {p.label} {configuredProviders.includes(p.id) ? '✓' : '(未配置)'}
@@ -215,10 +218,10 @@ export default function SettingsPage() {
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label>Model</Label>
+              <Label className="text-xs text-muted-foreground">Model</Label>
               {modelOptions.length > 0 ? (
                 <select
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-9 w-full rounded-lg border border-border/40 bg-[hsl(var(--muted))]/50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40 transition-shadow"
                   value={defaultModel}
                   onChange={(e) => setDefaultModel(e.target.value)}
                 >
@@ -232,11 +235,12 @@ export default function SettingsPage() {
                   value={defaultModel}
                   onChange={(e) => setDefaultModel(e.target.value)}
                   placeholder="输入模型名称"
+                  className="h-9 bg-[hsl(var(--muted))]/50 border-border/40"
                 />
               )}
               {defaultModel === '__custom__' && (
                 <Input
-                  className="mt-2"
+                  className="mt-2 h-9 bg-[hsl(var(--muted))]/50 border-border/40"
                   value=""
                   onChange={(e) => setDefaultModel(e.target.value)}
                   placeholder="输入自定义模型名称"
@@ -245,20 +249,36 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
-          <Button onClick={onSaveGeneral} size="sm">保存默认模型</Button>
+          <Button onClick={onSaveGeneral} size="sm" className="mt-4 h-9 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--primary))]/90">
+            保存
+          </Button>
         </section>
 
         {/* AI 开关 */}
-        <section className="space-y-4 rounded-lg border p-4">
-          <h2 className="text-lg font-semibold">AI 开关</h2>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={!!settings.enable_feed_ai} onChange={(e) => updateSettings({ enable_feed_ai: e.target.checked })} />
-              启用投喂 AI 抽取
+        <section className="rounded-xl border border-border/60 bg-[hsl(var(--card))] p-5 animate-slide-up" style={{ animationDelay: '100ms' }}>
+          <div className="mb-4">
+            <h2 className="text-base font-semibold">功能开关</h2>
+          </div>
+          <div className="space-y-3">
+            <label className="flex items-center justify-between rounded-lg px-1 py-1 cursor-pointer group">
+              <div>
+                <span className="text-sm font-medium">投喂 AI 抽取</span>
+                <p className="text-xs text-muted-foreground">投喂内容时自动使用 AI 抽取知识节点</p>
+              </div>
+              <div className={`relative h-5 w-9 rounded-full transition-colors ${settings.enable_feed_ai ? 'bg-[hsl(var(--primary))]' : 'bg-[hsl(var(--muted))]'}`}>
+                <input type="checkbox" checked={!!settings.enable_feed_ai} onChange={(e) => updateSettings({ enable_feed_ai: e.target.checked })} className="sr-only" />
+                <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${settings.enable_feed_ai ? 'translate-x-4' : ''}`} />
+              </div>
             </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={!!settings.enable_monthly_budget} onChange={(e) => updateSettings({ enable_monthly_budget: e.target.checked })} />
-              启用月度预算上限
+            <label className="flex items-center justify-between rounded-lg px-1 py-1 cursor-pointer group">
+              <div>
+                <span className="text-sm font-medium">月度预算上限</span>
+                <p className="text-xs text-muted-foreground">限制每月 AI 调用费用不超过预算</p>
+              </div>
+              <div className={`relative h-5 w-9 rounded-full transition-colors ${settings.enable_monthly_budget ? 'bg-[hsl(var(--primary))]' : 'bg-[hsl(var(--muted))]'}`}>
+                <input type="checkbox" checked={!!settings.enable_monthly_budget} onChange={(e) => updateSettings({ enable_monthly_budget: e.target.checked })} className="sr-only" />
+                <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${settings.enable_monthly_budget ? 'translate-x-4' : ''}`} />
+              </div>
             </label>
           </div>
         </section>

@@ -58,9 +58,9 @@ export default function Page() {
   }, [])
 
   return (
-    <main className="flex h-screen flex-col">
+    <main className="flex h-screen">
       <NavBar />
-      <div className="relative flex-1">
+      <div className="relative ml-16 flex-1">
         <GraphCanvas
           nodes={nodes}
           edges={edges}

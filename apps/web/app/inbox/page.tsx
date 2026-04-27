@@ -72,29 +72,49 @@ export default function InboxPage() {
   return (
     <>
       <NavBar />
-      <div className="mx-auto max-w-3xl p-6">
+      <div className="ml-16 mx-auto max-w-3xl px-8 py-8 animate-fade-in">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">📥 待审队列 ({total})</h1>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">待审队列</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{total} 条待处理建议</p>
+          </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={selectAll}>全选</Button>
-            <Button variant="outline" size="sm" onClick={clearSelection}>取消选择</Button>
-            {selectedIds.size > 0 && (
+            {selectedIds.size > 0 ? (
               <>
-                <Button size="sm" onClick={() => batchConfirm('accept').then(() => toast.success('批量接受完成'))}>
-                  批量接受 ({selectedIds.size})
+                <Button
+                  size="sm"
+                  onClick={() => batchConfirm('accept').then(() => toast.success('批量接受完成'))}
+                  className="h-8 bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  接受 {selectedIds.size} 条
                 </Button>
-                <Button variant="destructive" size="sm" onClick={() => batchConfirm('reject').then(() => toast.success('批量拒绝完成'))}>
-                  批量拒绝 ({selectedIds.size})
+                <Button
+                  size="sm"
+                  onClick={() => batchConfirm('reject').then(() => toast.success('批量拒绝完成'))}
+                  className="h-8 bg-red-600/80 text-white hover:bg-red-600"
+                >
+                  拒绝
                 </Button>
+                <button onClick={clearSelection} className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  取消
+                </button>
               </>
+            ) : (
+              <button onClick={selectAll} className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                全选
+              </button>
             )}
           </div>
         </div>
 
-        {loading && <p className="text-center text-muted-foreground">加载中…</p>}
-        {error && <p className="text-center text-red-500">{error}</p>}
+        {loading && (
+          <div className="flex items-center justify-center py-16">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-[hsl(var(--primary))]" />
+          </div>
+        )}
+        {error && <p className="text-center text-red-400 py-8">{error}</p>}
 
-        <div className="space-y-3">
+        <div className="space-y-2">
           {suggestions.map((s) => (
             <InboxCard
               key={s.id}
@@ -109,9 +129,12 @@ export default function InboxPage() {
         </div>
 
         {!loading && suggestions.length === 0 && (
-          <div className="py-16 text-center text-muted-foreground">
-            <p className="text-4xl mb-2">🎉</p>
-            <p>Inbox 清空了！去投喂一些内容吧。</p>
+          <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[hsl(var(--muted))]">
+              <Inbox className="h-7 w-7 text-muted-foreground" />
+            </div>
+            <p className="text-base font-medium text-muted-foreground">队列已清空</p>
+            <p className="mt-1 text-sm text-muted-foreground/60">投喂新内容后，AI 建议会出现在这里</p>
           </div>
         )}
 
