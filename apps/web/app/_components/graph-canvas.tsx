@@ -33,14 +33,14 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
       }
     }
 
-    // Node color palette — warm, distinguishable hues
+    // Obsidian-style palette — saturated, distinct hues on solid circles
     const NODE_COLORS = [
-      { bg: '#c2654a', border: '#d4795f' }, // terracotta
-      { bg: '#4a96a0', border: '#5fb0b8' }, // teal
-      { bg: '#54966e', border: '#6aad84' }, // sage
-      { bg: '#8a6db5', border: '#9f84c4' }, // lavender
-      { bg: '#b89640', border: '#ccaa55' }, // ochre
-      { bg: '#b5567a', border: '#c86e90' }, // rose
+      '#c06050', // terracotta red
+      '#60a8a8', // teal
+      '#70a860', // sage green
+      '#9878b8', // lavender
+      '#c0a040', // ochre gold
+      '#c06888', // rose pink
     ]
 
     const cy = cytoscape({
@@ -50,32 +50,31 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
           selector: 'node',
           style: {
             'background-color': 'data(bgColor)',
-            'border-width': 2,
-            'border-color': 'data(borderColor)',
+            'border-width': 0,
             label: 'data(label)',
-            color: '#c8bfb4',
+            color: '#e8e0d8',
             'font-family': 'Figtree, system-ui, sans-serif',
-            'font-size': 12,
+            'font-size': 13,
             'font-weight': 500,
             'text-valign': 'bottom',
-            'text-margin-y': 8,
-            'text-outline-color': '#1f1b17',
-            'text-outline-width': 2,
-            'text-max-width': '90px',
+            'text-margin-y': 10,
+            'text-outline-color': '#221e1a',
+            'text-outline-width': 3,
+            'text-max-width': '100px',
             'text-wrap': 'ellipsis',
-            width: 28,
-            height: 28,
+            width: 40,
+            height: 40,
             'overlay-opacity': 0,
-            'transition-property': 'background-color border-color width height',
-            'transition-duration': 200,
+            'transition-property': 'width height opacity',
+            'transition-duration': 150,
           },
         },
         {
           selector: 'node[?seed]',
           style: {
-            width: 38,
-            height: 38,
-            'font-size': 13,
+            width: 52,
+            height: 52,
+            'font-size': 14,
             'font-weight': 600,
           },
         },
@@ -83,15 +82,15 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
           selector: 'node:selected',
           style: {
             'border-width': 3,
-            'border-color': '#c2654a',
-            width: 34,
-            height: 34,
+            'border-color': '#e8e0d8',
+            width: 46,
+            height: 46,
           },
         },
         {
           selector: 'node.pending-source',
           style: {
-            'border-color': '#4a96a0',
+            'border-color': '#60a8a8',
             'border-style': 'dashed',
             'border-width': 3,
           },
@@ -100,22 +99,27 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
           selector: 'edge',
           style: {
             width: 1,
-            'line-color': '#3d3730',
-            'target-arrow-color': '#4d453d',
+            'line-color': '#383228',
+            'target-arrow-color': '#383228',
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
-            label: 'data(label)',
-            'font-size': 9,
+            'font-size': 8,
             'font-family': 'Figtree, system-ui, sans-serif',
-            color: '#665d54',
-            'text-outline-color': '#1f1b17',
-            'text-outline-width': 1.5,
-            opacity: 0.8,
+            color: '#4a4238',
+            'text-outline-color': '#221e1a',
+            'text-outline-width': 1,
+            opacity: 0.5,
           },
         },
         {
           selector: 'edge:selected',
-          style: { 'line-color': '#c2654a', 'target-arrow-color': '#c2654a', opacity: 1, width: 2 },
+          style: {
+            'line-color': '#685e52',
+            'target-arrow-color': '#685e52',
+            opacity: 1,
+            width: 1.5,
+            label: 'data(label)',
+          },
         },
       ],
     })
@@ -153,29 +157,20 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
     const cy = cyRef.current
     if (!cy) return
     cy.elements().remove()
-    // Stable color assignment based on node id hash
-    const NODE_COLORS = [
-      { bg: '#c2654a', border: '#d4795f' },
-      { bg: '#4a96a0', border: '#5fb0b8' },
-      { bg: '#54966e', border: '#6aad84' },
-      { bg: '#8a6db5', border: '#9f84c4' },
-      { bg: '#b89640', border: '#ccaa55' },
-      { bg: '#b5567a', border: '#c86e90' },
+    const COLORS = [
+      '#c06050', '#60a8a8', '#70a860', '#9878b8', '#c0a040', '#c06888',
     ]
     const hashIndex = (id: string) => {
       let h = 0
       for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0
-      return Math.abs(h) % NODE_COLORS.length
+      return Math.abs(h) % COLORS.length
     }
 
     cy.add([
-      ...nodes.map((n) => {
-        const c = NODE_COLORS[hashIndex(n.id)]
-        return {
-          group: 'nodes' as const,
-          data: { id: n.id, label: n.title, seed: n.is_seed ? 1 : 0, bgColor: c.bg, borderColor: c.border },
-        }
-      }),
+      ...nodes.map((n) => ({
+        group: 'nodes' as const,
+        data: { id: n.id, label: n.title, seed: n.is_seed ? 1 : 0, bgColor: COLORS[hashIndex(n.id)] },
+      })),
       ...edges.map((e) => ({
         group: 'edges' as const,
         data: { id: e.id, source: e.source_node_id, target: e.target_node_id, label: e.relation_type },
