@@ -105,3 +105,75 @@ export interface Aspect {
   created_by: Author
   ai_metadata: unknown | null
 }
+
+/** 建议类型 */
+export const SUGGESTION_TYPES = ['new_node', 'new_edge', 'fill_aspect', 'update_aspect', 'merge_nodes'] as const
+export type SuggestionType = (typeof SUGGESTION_TYPES)[number]
+
+/** 建议来源 */
+export const SUGGESTION_SOURCES = ['feed', 'proactive_scan', 'deepdive'] as const
+export type SuggestionSource = (typeof SUGGESTION_SOURCES)[number]
+
+/** 投喂类型 */
+export const FEED_ITEM_TYPES = ['text', 'url', 'file_md', 'file_pdf'] as const
+export type FeedItemType = (typeof FEED_ITEM_TYPES)[number]
+
+/** 投喂状态 */
+export const FEED_ITEM_STATUSES = ['processing', 'done', 'failed'] as const
+export type FeedItemStatus = (typeof FEED_ITEM_STATUSES)[number]
+
+/**
+ * 待审建议 —— `suggestions` 表的镜像。
+ */
+export interface Suggestion {
+  id: string
+  type: SuggestionType
+  source: SuggestionSource
+  source_ref_id: string | null
+  payload: unknown
+  rationale: string | null
+  confidence: number
+  status: SuggestionStatus
+  decided_at: string | null
+  decided_payload: unknown | null
+  decision_note: string | null
+  provider_id: string | null
+  /** AI 调用时使用的模型 ID */
+  model: string | null
+  created_at: string
+  expires_at: string | null
+}
+
+/**
+ * 投喂记录 —— `feed_items` 表的镜像。
+ */
+export interface FeedItem {
+  id: string
+  type: FeedItemType
+  raw_content: string | null
+  file_path: string | null
+  source_url: string | null
+  status: FeedItemStatus
+  error_message: string | null
+  suggestions_count: number
+  created_at: string
+}
+
+/**
+ * AI 调用日志 —— `ai_call_logs` 表的镜像。
+ */
+export interface AiCallLog {
+  id: string
+  channel: 'direct' | 'bridge'
+  task: string
+  provider_id: string | null
+  model: string | null
+  base_url: string | null
+  input_tokens: number
+  output_tokens: number
+  cost_usd: number
+  duration_ms: number
+  status: 'success' | 'failed' | 'timeout'
+  error_message: string | null
+  created_at: string
+}
