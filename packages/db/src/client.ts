@@ -5,6 +5,7 @@ import Database from 'better-sqlite3'
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import * as schema from './schema/index.js'
+import { seedDefaultSettings } from './seed.js'
 
 let _db: BetterSQLite3Database<typeof schema> | null = null
 let _sqlite: Database.Database | null = null
@@ -58,4 +59,5 @@ export function initDb(migrationsFolder?: string): void {
     throw new Error(`Drizzle migrations folder not found: ${dir}. Run \`pnpm db:generate\` first.`)
   }
   migrate(db, { migrationsFolder: dir })
+  seedDefaultSettings(db)
 }
