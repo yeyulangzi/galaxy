@@ -5,6 +5,7 @@ export const feedItems = sqliteTable('feed_items', {
   id: text('id').primaryKey(),
   type: text('type', { enum: ['text', 'url', 'file_md', 'file_pdf'] }).notNull(),
   raw_content: text('raw_content'),
+  parsed_content: text('parsed_content'),
   file_path: text('file_path'),
   source_url: text('source_url'),
   status: text('status', { enum: ['processing', 'done', 'failed'] }).notNull().default('processing'),
