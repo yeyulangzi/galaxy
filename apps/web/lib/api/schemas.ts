@@ -31,3 +31,37 @@ export const CreateEdgeSchema = z
     path: ['target_node_id'],
   })
 export type CreateEdgeInput = z.infer<typeof CreateEdgeSchema>
+
+export const FeedTextSchema = z.object({
+  type: z.literal('text'),
+  content: z.string().trim().min(1).max(100000),
+})
+
+export const FeedUrlSchema = z.object({
+  type: z.literal('url'),
+  url: z.string().url(),
+})
+
+export const FeedFileSchema = z.object({
+  type: z.enum(['file_md', 'file_pdf']),
+  /** Base64 编码的文件内容 */
+  file_content: z.string().min(1),
+  file_name: z.string().min(1),
+})
+
+export const FeedSchema = z.discriminatedUnion('type', [FeedTextSchema, FeedUrlSchema, FeedFileSchema])
+export type FeedInput = z.infer<typeof FeedSchema>
+
+export const ConfirmActionSchema = z.object({
+  action: z.enum(['accept', 'reject', 'accept_modified']),
+  modified_payload: z.unknown().optional(),
+  decision_note: z.string().max(500).optional(),
+})
+export type ConfirmAction = z.infer<typeof ConfirmActionSchema>
+
+export const BatchConfirmSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(50),
+  action: z.enum(['accept', 'reject']),
+  decision_note: z.string().max(500).optional(),
+})
+export type BatchConfirmInput = z.infer<typeof BatchConfirmSchema>
