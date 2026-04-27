@@ -10,7 +10,7 @@ import { jsonrepair } from 'jsonrepair'
  */
 export function extractAndRepairJson(raw: string): unknown {
   // 0. 去除 DeepSeek R1 等推理模型的 <tool_call>...<tool_call> 内容
-  let cleaned = raw.replace(/<tool_call>[\s\S]*?</think>/g, '').trim()
+  let cleaned = raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
   if (!cleaned) cleaned = raw.trim()
 
   // 1. 直接解析
