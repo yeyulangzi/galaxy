@@ -1,4 +1,4 @@
-import type { Node, Edge } from '@galaxy/shared'
+import type { Node, Edge, Suggestion } from '@galaxy/shared'
 import type { CreateNodeInput, UpdateNodeInput, CreateEdgeInput } from './schemas'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
@@ -31,4 +31,35 @@ export const api = {
     ),
   deleteEdge: (id: string) =>
     fetch(`/api/edges/${id}`, { method: 'DELETE' }).then((r) => handle<{ id: string }>(r)),
+
+  // Feed
+  submitFeed: (input: { type: string; content?: string; url?: string }) =>
+    fetch('/api/feed', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input) }).then((r) =>
+      handle<{ feed_item_id: string; suggestions_count: number; cost_usd?: number; duration_ms?: number }>(r),
+    ),
+
+  // Inbox
+  listInbox: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+    return fetch(`/api/inbox${qs}`).then(async (r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const json = await r.json()
+      return json as { data: Suggestion[]; meta: { total: number; page: number; limit: number } }
+    })
+  },
+  confirmSuggestion: (id: string, input: { action: string; modified_payload?: unknown; decision_note?: string }) =>
+    fetch(`/api/inbox/${id}/confirm`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input) }).then((r) =>
+      handle<{ id: string; status: string; created?: Array<{ type: string; id: string }> }>(r),
+    ),
+  batchConfirm: (input: { ids: string[]; action: string; decision_note?: string }) =>
+    fetch('/api/inbox/batch', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input) }).then((r) =>
+      handle<{ updated: number; action: string }>(r),
+    ),
+
+  // Settings
+  getSettings: () => fetch('/api/settings').then((r) => handle<Record<string, unknown>>(r)),
+  updateSettings: (input: Record<string, unknown>) =>
+    fetch('/api/settings', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(input) }).then((r) =>
+      handle<Record<string, unknown>>(r),
+    ),
 }
