@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
 import { useGraphStore } from '@/lib/store/graph-store'
+import { NavBar } from './_components/nav-bar'
+import { FeedFab } from './_components/feed-fab'
 
 const GraphCanvas = dynamic(
   () => import('./_components/graph-canvas').then((m) => m.GraphCanvas),
@@ -59,17 +59,7 @@ export default function Page() {
 
   return (
     <main className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b px-4 py-2">
-        <h1 className="text-lg font-semibold">Galaxy</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setPaletteOpen(true)}>
-            <Search className="mr-1 h-4 w-4" /> 搜索 (⌘K)
-          </Button>
-          <Button size="sm" onClick={() => setNewOpen(true)}>
-            <Plus className="mr-1 h-4 w-4" /> 新建节点
-          </Button>
-        </div>
-      </header>
+      <NavBar />
       <div className="relative flex-1">
         <GraphCanvas
           nodes={nodes}
@@ -81,6 +71,7 @@ export default function Page() {
       </div>
       <NewNodeDialog open={newOpen} onOpenChange={setNewOpen} />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <FeedFab />
     </main>
   )
 }
