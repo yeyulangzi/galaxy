@@ -72,6 +72,7 @@ CREATE TABLE `feed_items` (
 	`id` text PRIMARY KEY NOT NULL,
 	`type` text NOT NULL,
 	`raw_content` text,
+	`parsed_content` text,
 	`file_path` text,
 	`source_url` text,
 	`status` text DEFAULT 'processing' NOT NULL,

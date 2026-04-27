@@ -78,8 +78,22 @@ export async function PATCH(req: NextRequest) {
 
   db.update(settings).set(patch).where(eq(settings.id, 1)).run()
   const updated = db.select().from(settings).where(eq(settings.id, 1)).get()
+  if (!updated) return NextResponse.json({ error: 'settings not found' }, { status: 500 })
 
-  // 返回时不暴露原始 credentials
+  // 返回时不暴露原始 credentials，但要返回 masked 信息
+  const updatedCreds = (updated.provider_credentials ?? {}) as Record<string, { api_key?: string }>
+  const maskedCredentials: Record<string, { has_key: boolean; masked_key: string }> = {}
+  for (const [provider, value] of Object.entries(updatedCreds)) {
+    const key = value?.api_key ?? ''
+    maskedCredentials[provider] = {
+      has_key: key.length > 0,
+      masked_key: key.length > 8 ? key.slice(0, 4) + '****' + key.slice(-4) : key.length > 0 ? '****' : '',
+    }
+  }
+  const configuredProviders = Object.entries(updatedCreds)
+    .filter(([, v]) => v.api_key)
+    .map(([k]) => k)
+
   const safeUpdated = { ...updated, provider_credentials: undefined }
-  return NextResponse.json({ data: safeUpdated })
+  return NextResponse.json({ data: { ...safeUpdated, configured_providers: configuredProviders, masked_credentials: maskedCredentials } })
 }
