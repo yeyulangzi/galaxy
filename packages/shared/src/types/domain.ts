@@ -11,7 +11,8 @@
  */
 
 /** 节点状态（与 nodes.status 列字面一致） */
-export type NodeStatus = 'active' | 'archived'
+export const NODE_STATUSES = ['active', 'archived'] as const
+export type NodeStatus = (typeof NODE_STATUSES)[number]
 
 /**
  * 边的关系类型（与 edges.relation_type 列字面一致）。
@@ -24,31 +25,37 @@ export type NodeStatus = 'active' | 'archived'
  *   - evolved_from  从 X 演化而来
  *   - cites         引用/参考
  */
-export type RelationType =
-  | 'contains'
-  | 'related'
-  | 'opposes'
-  | 'instance_of'
-  | 'evolved_from'
-  | 'cites'
+export const RELATION_TYPES = [
+  'contains',
+  'related',
+  'opposes',
+  'instance_of',
+  'evolved_from',
+  'cites',
+] as const
+export type RelationType = (typeof RELATION_TYPES)[number]
 
 /** AI 调用的状态（M2 ai_call_logs 表会引用此类型） */
-export type AiCallStatus = 'success' | 'failed' | 'timeout'
+export const AI_CALL_STATUSES = ['success', 'failed', 'timeout'] as const
+export type AiCallStatus = (typeof AI_CALL_STATUSES)[number]
 
 /** 候选建议的状态（与 suggestions.status 列字面一致，6 值） */
-export type SuggestionStatus =
-  | 'pending'
-  | 'accepted'
-  | 'rejected'
-  | 'accepted_modified'
-  | 'expired'
-  | 'paused'
+export const SUGGESTION_STATUSES = [
+  'pending',
+  'accepted',
+  'rejected',
+  'accepted_modified',
+  'expired',
+  'paused',
+] as const
+export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number]
 
 /**
  * 记录的创建者（与 nodes / edges / aspects 等表的 created_by 列字面一致）。
  * 复用同一个枚举，避免每张表重复定义。
  */
-export type Author = 'user' | 'ai_feed' | 'ai_proactive' | 'ai_deepdive'
+export const AUTHORS = ['user', 'ai_feed', 'ai_proactive', 'ai_deepdive'] as const
+export type Author = (typeof AUTHORS)[number]
 
 /**
  * 节点（图谱顶点） —— `nodes` 表的镜像。
