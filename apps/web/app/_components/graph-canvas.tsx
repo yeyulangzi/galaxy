@@ -2,11 +2,9 @@
 
 import { useEffect, useRef } from 'react'
 import cytoscape, { Core, EventObject } from 'cytoscape'
-// @ts-expect-error - cytoscape-fcose has no types
-import fcose from 'cytoscape-fcose'
 import type { Node, Edge } from '@galaxy/shared'
 
-cytoscape.use(fcose)
+let fcoseRegistered = false
 
 interface Props {
   nodes: Node[]
@@ -22,6 +20,19 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
 
   useEffect(() => {
     if (!containerRef.current) return
+
+    // 延迟注册 fcose 布局（避免模块顶层 ESM/CJS 兼容问题）
+    if (!fcoseRegistered) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const fcose = require('cytoscape-fcose')
+        cytoscape.use(fcose.default || fcose)
+        fcoseRegistered = true
+      } catch {
+        // fcose 加载失败时 fallback 到 grid 布局
+      }
+    }
+
     const cy = cytoscape({
       container: containerRef.current,
       style: [
@@ -102,7 +113,7 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
         data: { id: e.id, source: e.source_node_id, target: e.target_node_id, label: e.relation_type },
       })),
     ])
-    cy.layout({ name: 'fcose', animate: false, randomize: nodes.length < 20 } as any).run()
+    cy.layout({ name: fcoseRegistered ? 'fcose' : 'grid', animate: false, randomize: nodes.length < 20 } as any).run()
     cy.fit(undefined, 40)
   }, [nodes, edges])
 
