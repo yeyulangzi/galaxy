@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "tsx scripts/dev.ts",
     "build": "pnpm --filter @galaxy/web build",
-    "test": "vitest run",
+    "test": "vitest run && pnpm --filter @galaxy/web test",
     "test:watch": "vitest",
     "typecheck": "pnpm -r typecheck",
     "db:generate": "pnpm --filter @galaxy/db db:generate",

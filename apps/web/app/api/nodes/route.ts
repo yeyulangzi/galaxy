@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb, initDb } from '@galaxy/db'
+import { getDb } from '@galaxy/db'
 import { nodes } from '@galaxy/db/schema'
 import { generateId, slugify } from '@galaxy/shared'
 import { CreateNodeSchema } from '@/lib/api/schemas'
+import { ensureDb } from '@/lib/api/ensure-db'
 import { desc, eq } from 'drizzle-orm'
 
 export const dynamic = 'force-dynamic'
-
-// 模块级仅初始化一次
-let initialized = false
-function ensureDb() {
-  if (!initialized) {
-    initDb()
-    initialized = true
-  }
-}
 
 export async function GET() {
   ensureDb()

@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb, initDb } from '@galaxy/db'
+import { getDb } from '@galaxy/db'
 import { nodes } from '@galaxy/db/schema'
 import { UpdateNodeSchema } from '@/lib/api/schemas'
+import { ensureDb } from '@/lib/api/ensure-db'
 import { eq } from 'drizzle-orm'
 import { slugify } from '@galaxy/shared'
 
 export const dynamic = 'force-dynamic'
-
-let initialized = false
-function ensureDb() {
-  if (!initialized) {
-    initDb()
-    initialized = true
-  }
-}
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   ensureDb()
@@ -34,11 +27,21 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const existing = db.select().from(nodes).where(eq(nodes.id, params.id)).get()
   if (!existing) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
-  const patch: Record<string, unknown> = { ...parsed.data }
+  const patch: Partial<typeof nodes.$inferInsert> = {
+    ...parsed.data,
+    updated_at: new Date().toISOString(),
+  }
   if (parsed.data.title) patch.slug = slugify(parsed.data.title)
-  patch.updated_at = new Date().toISOString()
 
-  db.update(nodes).set(patch).where(eq(nodes.id, params.id)).run()
+  try {
+    db.update(nodes).set(patch).where(eq(nodes.id, params.id)).run()
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg.includes('UNIQUE')) {
+      return NextResponse.json({ error: { slug: ['同名节点已存在'] } }, { status: 409 })
+    }
+    throw e
+  }
   const row = db.select().from(nodes).where(eq(nodes.id, params.id)).get()
   return NextResponse.json({ data: row })
 }

@@ -1,17 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb, initDb } from '@galaxy/db'
+import { getDb } from '@galaxy/db'
 import { edges } from '@galaxy/db/schema'
+import { ensureDb } from '@/lib/api/ensure-db'
 import { eq } from 'drizzle-orm'
 
 export const dynamic = 'force-dynamic'
-
-let initialized = false
-function ensureDb() {
-  if (!initialized) {
-    initDb()
-    initialized = true
-  }
-}
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   ensureDb()
