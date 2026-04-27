@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback, useState } from 'react'
 import { toast } from 'sonner'
+import { Inbox } from 'lucide-react'
 import type { Suggestion } from '@galaxy/shared'
 import { Button } from '@/components/ui/button'
 import { useInboxStore } from '@/lib/store/inbox-store'
