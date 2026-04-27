@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
@@ -26,6 +26,19 @@ const CommandPalette = dynamic(
 
 export default function Page() {
   const { nodes, edges, loadAll, selectNode, addEdge } = useGraphStore()
+
+  const handleCreateEdge = useCallback(
+    async (sourceId: string, targetId: string) => {
+      try {
+        await addEdge({ source_node_id: sourceId, target_node_id: targetId, relation_type: 'related', weight: 1 })
+        toast.success('已创建边')
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : '创建失败'
+        toast.error(message)
+      }
+    },
+    [addEdge],
+  )
   const [newOpen, setNewOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
 
@@ -62,15 +75,7 @@ export default function Page() {
           nodes={nodes}
           edges={edges}
           onSelectNode={selectNode}
-          onCreateEdge={async (s, t) => {
-            try {
-              await addEdge({ source_node_id: s, target_node_id: t, relation_type: 'related', weight: 1 })
-              toast.success('已创建边')
-            } catch (e: unknown) {
-              const message = e instanceof Error ? e.message : '创建失败'
-              toast.error(message)
-            }
-          }}
+          onCreateEdge={handleCreateEdge}
         />
         <NodeDetailPanel />
       </div>
