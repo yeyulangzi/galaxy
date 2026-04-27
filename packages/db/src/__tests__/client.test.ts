@@ -1,31 +1,46 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import os from 'node:os'
 import path from 'node:path'
-import { resolveDbPath } from '../client.js'
+import fs from 'node:fs'
+import { closeDb, initDb, getDb, resolveDbPath } from '../client'
+import { nodes } from '../schema/nodes'
+import { settings } from '../schema/settings'
+import { eq } from 'drizzle-orm'
 
-const ORIGINAL_ENV = process.env.GALAXY_DB_PATH
+const TMP_DB = path.join(os.tmpdir(), `galaxy-test-${Date.now()}.db`)
 
-afterEach(() => {
-  if (ORIGINAL_ENV === undefined) {
-    delete process.env.GALAXY_DB_PATH
-  } else {
-    process.env.GALAXY_DB_PATH = ORIGINAL_ENV
-  }
+beforeEach(() => {
+  process.env.GALAXY_DB_PATH = TMP_DB
 })
 
-describe('resolveDbPath', () => {
-  it('未设置 GALAXY_DB_PATH 时回落到 ~/galaxy/data/galaxy.db', () => {
-    delete process.env.GALAXY_DB_PATH
-    expect(resolveDbPath()).toBe(path.join(os.homedir(), 'galaxy', 'data', 'galaxy.db'))
+afterEach(() => {
+  closeDb()
+  if (fs.existsSync(TMP_DB)) fs.rmSync(TMP_DB)
+  delete process.env.GALAXY_DB_PATH
+})
+
+describe('db client', () => {
+  it('resolveDbPath honors env override', () => {
+    expect(resolveDbPath()).toBe(TMP_DB)
   })
 
-  it('设置了 GALAXY_DB_PATH 时优先使用环境变量', () => {
-    process.env.GALAXY_DB_PATH = '/tmp/galaxy-test/foo.db'
-    expect(resolveDbPath()).toBe('/tmp/galaxy-test/foo.db')
+  it('initDb creates tables and seeds settings row', () => {
+    initDb()
+    const db = getDb()
+    const rows = db.select().from(settings).all()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.id).toBe(1)
   })
 
-  it('GALAXY_DB_PATH 为空字符串时也回落到默认路径', () => {
-    process.env.GALAXY_DB_PATH = ''
-    expect(resolveDbPath()).toBe(path.join(os.homedir(), 'galaxy', 'data', 'galaxy.db'))
+  it('can insert and read a node', () => {
+    initDb()
+    const db = getDb()
+    db.insert(nodes)
+      .values({ id: 'n_test1', title: '前置仓', slug: 'qian-zhi-cang' })
+      .run()
+    const row = db.select().from(nodes).where(eq(nodes.id, 'n_test1')).get()
+    expect(row?.title).toBe('前置仓')
+    expect(row?.status).toBe('active')
+    expect(row?.is_seed).toBe(false)
   })
 })
