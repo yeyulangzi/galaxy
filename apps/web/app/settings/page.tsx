@@ -42,7 +42,7 @@ export default function SettingsPage() {
           <h2 className="text-lg font-semibold">AI Provider 配置</h2>
           <p className="text-sm text-muted-foreground">
             API Key 通过 .env 文件配置（OPENAI_API_KEY, ANTHROPIC_API_KEY, DASHSCOPE_API_KEY, ARK_API_KEY, DEEPSEEK_API_KEY）。
-            {settings.configured_providers && (
+            {Array.isArray(settings.configured_providers) && (
               <span className="ml-1 font-medium text-green-600">
                 已配置: {(settings.configured_providers as string[]).join(', ') || '无'}
               </span>

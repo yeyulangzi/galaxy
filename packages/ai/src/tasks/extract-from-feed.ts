@@ -105,7 +105,7 @@ export async function extractFromFeed(input: ExtractFromFeedInput): Promise<Extr
     suggestionsCreated++
   }
 
-  for (const edge of data.new_edges) {
+  for (const edge of data.new_edges ?? []) {
     db.insert(suggestions)
       .values({
         id: generateId('s'),
@@ -149,7 +149,7 @@ export async function extractFromFeed(input: ExtractFromFeedInput): Promise<Extr
     .run()
 
   return {
-    result: data,
+    result: { ...data, new_edges: data.new_edges ?? [] },
     suggestionsCreated,
     inputTokens: response.usage.inputTokens,
     outputTokens: response.usage.outputTokens,

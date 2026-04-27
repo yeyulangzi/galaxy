@@ -31,7 +31,7 @@ export async function invokeStructured<T>(options: StructuredOutputOptions<T>): 
     }
     response = await provider.invoke({ ...request, tools: [tool] })
     if (response.toolCalls && response.toolCalls.length > 0) {
-      const parsed = schema.parse(response.toolCalls[0].arguments)
+      const parsed = schema.parse(response.toolCalls[0]!.arguments)
       return { data: parsed, response }
     }
     // Fallback: tool use requested but AI responded with text

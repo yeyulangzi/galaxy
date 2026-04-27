@@ -71,7 +71,8 @@ async function parseContent(input: Record<string, unknown>): Promise<string> {
   }
 
   if (type === 'file_pdf' && input.file_content) {
-    const pdfParse = (await import('pdf-parse')).default
+    const pdfParseModule = await import('pdf-parse') as any
+    const pdfParse: (buf: Buffer) => Promise<{ text: string }> = pdfParseModule.default ?? pdfParseModule
     const buffer = Buffer.from(input.file_content as string, 'base64')
     const result = await pdfParse(buffer)
     return result.text

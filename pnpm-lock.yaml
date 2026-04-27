@@ -135,6 +135,9 @@ importers:
       '@galaxy/shared':
         specifier: workspace:*
         version: link:../shared
+      drizzle-orm:
+        specifier: ^0.30.0
+        version: 0.30.10(@types/better-sqlite3@7.6.13)(@types/react@18.3.2)(better-sqlite3@11.10.0)(react@18.3.1)
       handlebars:
         specifier: ^4.7.8
         version: 4.7.9
