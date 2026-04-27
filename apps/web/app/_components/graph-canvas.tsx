@@ -33,25 +33,38 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
       }
     }
 
+    // Node color palette — warm, distinguishable hues
+    const NODE_COLORS = [
+      { bg: '#c2654a', border: '#d4795f' }, // terracotta
+      { bg: '#4a96a0', border: '#5fb0b8' }, // teal
+      { bg: '#54966e', border: '#6aad84' }, // sage
+      { bg: '#8a6db5', border: '#9f84c4' }, // lavender
+      { bg: '#b89640', border: '#ccaa55' }, // ochre
+      { bg: '#b5567a', border: '#c86e90' }, // rose
+    ]
+
     const cy = cytoscape({
       container: containerRef.current,
       style: [
         {
           selector: 'node',
           style: {
-            'background-color': '#475569',
+            'background-color': 'data(bgColor)',
             'border-width': 2,
-            'border-color': '#64748b',
+            'border-color': 'data(borderColor)',
             label: 'data(label)',
-            color: '#cbd5e1',
-            'font-size': 11,
+            color: '#c8bfb4',
+            'font-family': 'Figtree, system-ui, sans-serif',
+            'font-size': 12,
             'font-weight': 500,
             'text-valign': 'bottom',
             'text-margin-y': 8,
-            'text-outline-color': '#0c1120',
+            'text-outline-color': '#1f1b17',
             'text-outline-width': 2,
-            width: 24,
-            height: 24,
+            'text-max-width': '90px',
+            'text-wrap': 'ellipsis',
+            width: 28,
+            height: 28,
             'overlay-opacity': 0,
             'transition-property': 'background-color border-color width height',
             'transition-duration': 200,
@@ -60,26 +73,25 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
         {
           selector: 'node[?seed]',
           style: {
-            'background-color': '#d4a017',
-            'border-color': '#fbbf24',
-            width: 32,
-            height: 32,
+            width: 38,
+            height: 38,
+            'font-size': 13,
+            'font-weight': 600,
           },
         },
         {
           selector: 'node:selected',
           style: {
             'border-width': 3,
-            'border-color': '#fbbf24',
-            'background-color': '#d4a017',
-            width: 30,
-            height: 30,
+            'border-color': '#c2654a',
+            width: 34,
+            height: 34,
           },
         },
         {
           selector: 'node.pending-source',
           style: {
-            'border-color': '#38bdf8',
+            'border-color': '#4a96a0',
             'border-style': 'dashed',
             'border-width': 3,
           },
@@ -88,21 +100,22 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
           selector: 'edge',
           style: {
             width: 1,
-            'line-color': '#334155',
-            'target-arrow-color': '#475569',
+            'line-color': '#3d3730',
+            'target-arrow-color': '#4d453d',
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             label: 'data(label)',
             'font-size': 9,
-            color: '#475569',
-            'text-outline-color': '#0c1120',
+            'font-family': 'Figtree, system-ui, sans-serif',
+            color: '#665d54',
+            'text-outline-color': '#1f1b17',
             'text-outline-width': 1.5,
-            opacity: 0.7,
+            opacity: 0.8,
           },
         },
         {
           selector: 'edge:selected',
-          style: { 'line-color': '#fbbf24', 'target-arrow-color': '#fbbf24', opacity: 1, width: 2 },
+          style: { 'line-color': '#c2654a', 'target-arrow-color': '#c2654a', opacity: 1, width: 2 },
         },
       ],
     })
@@ -140,11 +153,29 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
     const cy = cyRef.current
     if (!cy) return
     cy.elements().remove()
+    // Stable color assignment based on node id hash
+    const NODE_COLORS = [
+      { bg: '#c2654a', border: '#d4795f' },
+      { bg: '#4a96a0', border: '#5fb0b8' },
+      { bg: '#54966e', border: '#6aad84' },
+      { bg: '#8a6db5', border: '#9f84c4' },
+      { bg: '#b89640', border: '#ccaa55' },
+      { bg: '#b5567a', border: '#c86e90' },
+    ]
+    const hashIndex = (id: string) => {
+      let h = 0
+      for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0
+      return Math.abs(h) % NODE_COLORS.length
+    }
+
     cy.add([
-      ...nodes.map((n) => ({
-        group: 'nodes' as const,
-        data: { id: n.id, label: n.title, seed: n.is_seed ? 1 : 0 },
-      })),
+      ...nodes.map((n) => {
+        const c = NODE_COLORS[hashIndex(n.id)]
+        return {
+          group: 'nodes' as const,
+          data: { id: n.id, label: n.title, seed: n.is_seed ? 1 : 0, bgColor: c.bg, borderColor: c.border },
+        }
+      }),
       ...edges.map((e) => ({
         group: 'edges' as const,
         data: { id: e.id, source: e.source_node_id, target: e.target_node_id, label: e.relation_type },
@@ -156,17 +187,16 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      {/* Subtle radial glow behind graph */}
+      {/* Soft warm vignette */}
       <div className="pointer-events-none absolute inset-0" style={{
-        background: 'radial-gradient(ellipse 60% 50% at 50% 45%, hsl(225 30% 12%) 0%, hsl(230 25% 7%) 70%)',
+        background: 'radial-gradient(ellipse 70% 60% at 50% 45%, hsl(30 8% 14%) 0%, hsl(30 8% 12%) 80%)',
       }} />
       <div ref={containerRef} className="absolute inset-0" />
       {/* Empty state */}
       {nodes.length === 0 && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 animate-fade-in">
-          <div className="text-5xl">✨</div>
-          <p className="text-lg font-medium text-muted-foreground">你的知识星图还是空的</p>
-          <p className="text-sm text-muted-foreground/70">点击右下角 ➕ 投喂第一条知识</p>
+          <p className="text-base font-medium text-muted-foreground">还没有任何节点</p>
+          <p className="text-sm text-muted-foreground/60">点击右下角 + 投喂第一条知识</p>
         </div>
       )}
     </div>

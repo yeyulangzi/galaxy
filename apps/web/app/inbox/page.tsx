@@ -73,7 +73,7 @@ export default function InboxPage() {
   return (
     <>
       <NavBar />
-      <div className="ml-16 mx-auto max-w-3xl px-8 py-8 animate-fade-in">
+      <div className="mx-auto max-w-3xl px-6 py-6 animate-fade-in">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">待审队列</h1>

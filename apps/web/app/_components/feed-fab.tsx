@@ -47,14 +47,14 @@ export function FeedFab() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-lg shadow-[hsl(43_96%_56%/0.25)] transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-[hsl(43_96%_56%/0.35)] active:scale-95 group/fab"
+        className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-md transition-all duration-150 hover:scale-105 active:scale-95"
         title="投喂知识"
       >
-        <Plus className="h-6 w-6 transition-transform duration-200 group-hover/fab:rotate-90" />
+        <Plus className="h-5 w-5" />
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[540px] glass border-border/40">
+        <DialogContent className="sm:max-w-[540px] border-border/50 bg-card">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold">投喂知识</DialogTitle>
             <p className="text-sm text-muted-foreground">粘贴文本或 URL，AI 会自动抽取知识节点</p>
