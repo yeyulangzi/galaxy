@@ -1,6 +1,6 @@
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import { settings } from './schema/settings.js'
-import type * as schema from './schema/index.js'
+import { settings } from './schema/settings'
+import type * as schema from './schema/index'
 
 /**
  * 确保 settings 表存在唯一一行（id = 1）。幂等。

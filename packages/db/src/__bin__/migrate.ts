@@ -1,4 +1,4 @@
-import { closeDb, initDb, resolveDbPath } from '../client.js'
+import { closeDb, initDb, resolveDbPath } from '../client'
 
 console.log(`[galaxy/db] migrating database at ${resolveDbPath()}`)
 initDb()

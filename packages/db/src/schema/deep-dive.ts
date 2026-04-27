@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core'
-import { nodes } from './nodes.js'
+import { nodes } from './nodes'
 
 export const deepDiveSessions = sqliteTable(
   'deep_dive_sessions',

@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core'
-import { nodes } from './nodes.js'
+import { nodes } from './nodes'
 
 export const edges = sqliteTable(
   'edges',
