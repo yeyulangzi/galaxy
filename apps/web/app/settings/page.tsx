@@ -176,7 +176,7 @@ export default function SettingsPage() {
         <h1 className="font-['Noto_Serif_Display'] text-xl font-semibold tracking-tight">设置</h1>
 
         {/* API Keys */}
-        <section className="space-y-3">
+        <section className="clay-card p-5 space-y-3">
           <div>
             <h2 className="text-sm font-semibold text-foreground">API Keys</h2>
             <p className="text-xs text-muted-foreground">至少配置一个 Provider</p>
@@ -254,10 +254,8 @@ export default function SettingsPage() {
           })}
         </section>
 
-        <hr className="border-border/30" />
-
         {/* 默认 Provider 和 Model */}
-        <section className="space-y-3">
+        <section className="clay-card p-5 space-y-3">
           <div>
             <h2 className="text-sm font-semibold text-foreground">默认模型</h2>
             <p className="text-xs text-muted-foreground">投喂时使用的 Provider 和模型</p>
@@ -267,7 +265,7 @@ export default function SettingsPage() {
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground">Provider</Label>
               <select
-                className="flex h-8 w-full rounded-md border border-border/40 bg-transparent px-2.5 text-sm outline-none focus:ring-1 focus:ring-ring/30"
+                className="flex h-8 w-full rounded-xl border border-border/30 clay-input px-2.5 text-sm outline-none focus:ring-1 focus:ring-ring/30"
                 value={defaultProvider}
                 onChange={(e) => {
                   setDefaultProvider(e.target.value)
@@ -289,7 +287,7 @@ export default function SettingsPage() {
               <Label className="text-[11px] text-muted-foreground">Model</Label>
               {modelOptions.length > 0 ? (
                 <select
-                  className="flex h-8 w-full rounded-md border border-border/40 bg-transparent px-2.5 text-sm outline-none focus:ring-1 focus:ring-ring/30"
+                  className="flex h-8 w-full rounded-xl border border-border/30 clay-input px-2.5 text-sm outline-none focus:ring-1 focus:ring-ring/30"
                   value={defaultModel}
                   onChange={(e) => setDefaultModel(e.target.value)}
                 >
@@ -322,10 +320,8 @@ export default function SettingsPage() {
           </Button>
         </section>
 
-        <hr className="border-border/30" />
-
         {/* 功能开关 */}
-        <section className="space-y-3">
+        <section className="clay-card p-5 space-y-3">
           <h2 className="text-sm font-semibold text-foreground">功能</h2>
           <div className="space-y-2.5">
             <label className="flex items-center justify-between cursor-pointer">
@@ -351,10 +347,8 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <hr className="border-border/30" />
-
         {/* 主动扫描 */}
-        <section className="space-y-3">
+        <section className="clay-card p-5 space-y-3">
           <div className="flex items-center gap-2">
             <Radar className="h-4 w-4" />
             <h2 className="text-sm font-semibold text-foreground">主动扫描</h2>
@@ -493,7 +487,7 @@ export default function SettingsPage() {
               <p className="text-[11px] text-muted-foreground">最近扫描记录</p>
               <div className="space-y-1">
                 {scanRuns.map((run) => (
-                  <div key={run.id} className="flex items-center justify-between rounded-md border border-border/30 px-3 py-1.5 text-[12px]">
+                  <div key={run.id} className="flex items-center justify-between rounded-xl border border-border/30 px-3 py-1.5 text-[12px]">
                     <div className="flex items-center gap-2">
                       <span className={`inline-block h-1.5 w-1.5 rounded-full ${run.status === 'done' ? 'bg-[hsl(var(--success))]' : run.status === 'running' ? 'bg-amber-500 animate-pulse' : 'bg-destructive'}`} />
                       <span className="text-muted-foreground">{run.trigger === 'cron' ? '定时' : '手动'}</span>
@@ -512,10 +506,8 @@ export default function SettingsPage() {
           )}
         </section>
 
-        <hr className="border-border/30" />
-
         {/* AI 用量统计 */}
-        <section className="space-y-3">
+        <section className="clay-card p-5 space-y-3">
           <h2 className="text-sm font-semibold text-foreground">AI 用量统计</h2>
           {costStats ? (
             <div className="space-y-1.5 text-[13px]">
@@ -546,10 +538,8 @@ export default function SettingsPage() {
           )}
         </section>
 
-        <hr className="border-border/30" />
-
         {/* 风险控制 */}
-        <section className="space-y-3">
+        <section className="clay-card p-5 space-y-3">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
             <h2 className="text-sm font-semibold text-foreground">风险控制</h2>
@@ -620,10 +610,8 @@ export default function SettingsPage() {
           )}
         </section>
 
-        <hr className="border-border/30" />
-
         {/* 数据安全 */}
-        <section className="space-y-3">
+        <section className="clay-card p-5 space-y-3">
           <div className="flex items-center gap-2">
             <Database className="h-4 w-4" />
             <h2 className="text-sm font-semibold text-foreground">数据安全</h2>
@@ -662,9 +650,9 @@ export default function SettingsPage() {
                 <Download className="mr-1.5 h-3.5 w-3.5" />
                 导出数据
               </Button>
-              <div id="export-menu" className="hidden absolute top-9 left-0 z-10 rounded-md border bg-popover p-1 shadow-md">
+              <div id="export-menu" className="hidden absolute top-9 left-0 z-10 rounded-xl border border-border/30 bg-popover p-1 shadow-clay-md">
                 <button
-                  className="flex w-full items-center rounded-sm px-3 py-1.5 text-[13px] hover:bg-accent"
+                  className="flex w-full items-center rounded-xl px-3 py-1.5 text-[13px] hover:bg-accent transition-colors"
                   onClick={() => {
                     api.exportData('json')
                     document.getElementById('export-menu')?.classList.add('hidden')
@@ -674,7 +662,7 @@ export default function SettingsPage() {
                   JSON 格式
                 </button>
                 <button
-                  className="flex w-full items-center rounded-sm px-3 py-1.5 text-[13px] hover:bg-accent"
+                  className="flex w-full items-center rounded-xl px-3 py-1.5 text-[13px] hover:bg-accent transition-colors"
                   onClick={() => {
                     api.exportData('markdown')
                     document.getElementById('export-menu')?.classList.add('hidden')
@@ -688,10 +676,8 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <hr className="border-border/30" />
-
         {/* 🛡️ 安全模式 */}
-        <section className="space-y-3">
+        <section className="clay-card p-5 space-y-3">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-destructive" />
             <h2 className="text-sm font-semibold text-foreground">🛡️ 安全模式</h2>
@@ -717,7 +703,7 @@ export default function SettingsPage() {
             </div>
           </div>
           {aiKilled ? (
-            <div className="rounded-md border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/5 px-3 py-2 text-[13px] text-[hsl(var(--success))]">
+            <div className="rounded-xl border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/5 px-3 py-2 text-[13px] text-[hsl(var(--success))]">
               ✓ 所有 AI 功能已关闭
             </div>
           ) : (

@@ -150,42 +150,67 @@ export async function POST(
     })),
   ]
 
-  // 调用 LLM
-  const response = await provider.invoke({
-    model,
-    messages: llmMessages,
-    maxTokens: 4096,
-    temperature: 0.7,
+  // 流式调用 LLM
+  const aiMessageId = generateId('dm')
+  const encoder = new TextEncoder()
+
+  const readableStream = new ReadableStream({
+    async start(controller) {
+      let fullContent = ''
+      try {
+        const chunks = provider.stream({
+          model,
+          messages: llmMessages,
+          maxTokens: 4096,
+          temperature: 0.7,
+        })
+
+        for await (const chunk of chunks) {
+          fullContent += chunk
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`),
+          )
+        }
+
+        // 保存 AI 回复
+        const aiCreatedAt = nowIso()
+        db.insert(deepDiveMessages)
+          .values({
+            id: aiMessageId,
+            session_id: sessionId,
+            role: 'ai',
+            content: fullContent,
+            created_at: aiCreatedAt,
+          })
+          .run()
+
+        // 更新 session 时间戳
+        db.update(deepDiveSessions)
+          .set({ updated_at: aiCreatedAt })
+          .where(eq(deepDiveSessions.id, sessionId))
+          .run()
+
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: 'done', messageId: aiMessageId, content: fullContent })}\n\n`,
+          ),
+        )
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`),
+        )
+      } finally {
+        controller.close()
+      }
+    },
   })
 
-  // 保存 AI 回复
-  const aiMessageId = generateId('dm')
-  const aiCreatedAt = nowIso()
-  db.insert(deepDiveMessages)
-    .values({
-      id: aiMessageId,
-      session_id: sessionId,
-      role: 'ai',
-      content: response.content,
-      created_at: aiCreatedAt,
-    })
-    .run()
-
-  // 更新 session 时间戳
-  db.update(deepDiveSessions)
-    .set({ updated_at: aiCreatedAt })
-    .where(eq(deepDiveSessions.id, sessionId))
-    .run()
-
-  return NextResponse.json({
-    data: {
-      message: {
-        id: aiMessageId,
-        session_id: sessionId,
-        role: 'ai',
-        content: response.content,
-        created_at: aiCreatedAt,
-      },
+  return new Response(readableStream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
     },
   })
 }

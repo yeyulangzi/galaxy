@@ -22,7 +22,7 @@ export function NavBar() {
   ]
 
   return (
-    <header className="sticky top-0 z-40 flex h-12 items-center justify-between border-b border-border/50 bg-background/95 px-5">
+    <header className="sticky top-0 z-40 flex h-12 items-center justify-between clay-surface shadow-clay-sm px-5">
       <div className="flex items-center gap-6">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2">
@@ -40,7 +40,7 @@ export function NavBar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors',
+                  'relative flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px] font-medium transition-all duration-200',
                   'text-muted-foreground hover:text-foreground hover:bg-accent/60',
                   isActive && 'text-foreground',
                 )}

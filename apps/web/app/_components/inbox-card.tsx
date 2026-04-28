@@ -29,7 +29,7 @@ export function InboxCard({ suggestion, selected, onToggleSelect, onAccept, onRe
   return (
     <div
       className={cn(
-        'group rounded-xl border border-border/50 bg-[hsl(var(--card))] p-4 transition-all duration-200 hover:border-border',
+        'group clay-card p-4 transition-all duration-200 hover:translate-y-[-2px] hover:shadow-clay-lg',
         selected && 'border-[hsl(var(--primary))]/50 ring-1 ring-[hsl(var(--primary))]/20',
       )}
     >
@@ -52,7 +52,7 @@ export function InboxCard({ suggestion, selected, onToggleSelect, onAccept, onRe
         {/* Content */}
         <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn('rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide', typeInfo.color)}>
+            <span className={cn('rounded-lg px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide', typeInfo.color)}>
               {typeInfo.label}
             </span>
             <span className="text-sm font-semibold truncate">{payload.title ?? payload.source_title ?? '—'}</span>
@@ -86,21 +86,21 @@ export function InboxCard({ suggestion, selected, onToggleSelect, onAccept, onRe
           <button
             onClick={onAccept}
             title="接受 (A)"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-emerald-500/15 hover:text-emerald-400 transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-xl text-muted-foreground hover:bg-emerald-500/15 hover:text-emerald-400 transition-colors"
           >
             <Check className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={onReject}
             title="拒绝 (R)"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/15 hover:text-red-400 transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-xl text-muted-foreground hover:bg-red-500/15 hover:text-red-400 transition-colors"
           >
             <X className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={onEdit}
             title="修改后接受 (E)"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-[hsl(var(--primary))]/15 hover:text-[hsl(var(--primary))] transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-xl text-muted-foreground hover:bg-[hsl(var(--primary))]/15 hover:text-[hsl(var(--primary))] transition-colors"
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>

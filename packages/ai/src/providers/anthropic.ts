@@ -91,6 +91,26 @@ export class AnthropicProvider implements LLMProvider {
     }
   }
 
+  async *stream(request: LLMRequest): AsyncIterable<string> {
+    const systemMessage = request.messages.find((m) => m.role === 'system')
+    const nonSystemMessages = request.messages.filter((m) => m.role !== 'system')
+    const stream = this.client.messages.stream({
+      model: request.model,
+      max_tokens: request.maxTokens ?? 4096,
+      temperature: request.temperature ?? 0.7,
+      system: systemMessage?.content,
+      messages: nonSystemMessages.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+    })
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        yield event.delta.text
+      }
+    }
+  }
+
   estimateCost(usage: TokenUsage, model: string): number {
     const info = this.supportedModels.find((m) => m.id === model)
     if (!info) return 0

@@ -58,7 +58,7 @@ export default function Page() {
   }, [])
 
   return (
-    <main className="flex h-screen flex-col">
+    <main className="flex h-screen flex-col bg-background">
       <NavBar />
       <div className="relative flex-1">
         <GraphCanvas

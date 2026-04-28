@@ -139,30 +139,19 @@ export const api = {
       handle<{ suggestionsCreated: number }>(r),
     ),
 
+  summarizeConversation: (sessionId: string, mode: 'feed' | 'aspect') =>
+    fetch(`/api/deepdive/${sessionId}/summarize`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ mode }),
+    }).then((r) =>
+      handle<{ mode: string; summary: string; suggestionsCount?: number; aspectId?: string }>(r),
+    ),
+
   listNodeSessions: (nodeId: string) =>
     fetch(`/api/nodes/${nodeId}/sessions`).then((r) =>
       handle<Array<Record<string, unknown>>>(r),
     ),
-
-  // Deep Dive
-  createDeepDiveSession: (nodeId: string, agentType: string) =>
-    fetch('/api/deepdive', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ nodeId, agentType }) }).then(
-      (r) => handle<DeepDiveSession>(r),
-    ),
-  getDeepDiveSession: (sessionId: string) =>
-    fetch(`/api/deepdive/${sessionId}`).then((r) => handle<DeepDiveSession>(r)),
-  sendDeepDiveMessage: (sessionId: string, content: string) =>
-    fetch(`/api/deepdive/${sessionId}/message`, {
-      method: 'POST',
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ content }),
-    }).then((r) => handle<DeepDiveMessage>(r)),
-  completeDeepDive: (sessionId: string) =>
-    fetch(`/api/deepdive/${sessionId}/complete`, { method: 'POST' }).then(
-      (r) => handle<{ suggestionsCreated: number }>(r),
-    ),
-  listNodeSessions: (nodeId: string) =>
-    fetch(`/api/nodes/${nodeId}/sessions`).then((r) => handle<DeepDiveSession[]>(r)),
 
   // Scan
   triggerScan: () =>

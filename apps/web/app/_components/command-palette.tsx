@@ -34,7 +34,7 @@ export function CommandPalette({ open, onOpenChange }: Props) {
             value={query}
             onValueChange={setQuery}
             placeholder="搜索节点标题 / 摘要 / 领域…"
-            className="border-b px-4 py-3 outline-none"
+            className="border-b border-border/30 px-4 py-3 outline-none clay-input"
           />
           <Command.List className="max-h-[360px] overflow-y-auto p-2">
             <Command.Empty className="px-4 py-6 text-center text-sm text-muted-foreground">
@@ -48,7 +48,7 @@ export function CommandPalette({ open, onOpenChange }: Props) {
                   selectNode(n.id)
                   onOpenChange(false)
                 }}
-                className="flex cursor-pointer flex-col gap-0.5 rounded px-3 py-2 text-sm aria-selected:bg-accent"
+                className="flex cursor-pointer flex-col gap-0.5 rounded-xl px-3 py-2 text-sm aria-selected:bg-accent transition-colors"
               >
                 <span className="font-medium">{n.title}</span>
                 {n.domain && (

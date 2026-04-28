@@ -85,6 +85,23 @@ export class OpenAIProvider implements LLMProvider {
     }
   }
 
+  async *stream(request: LLMRequest): AsyncIterable<string> {
+    const stream = await this.client.chat.completions.create({
+      model: request.model,
+      messages: request.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+      max_tokens: request.maxTokens ?? 4096,
+      temperature: request.temperature ?? 0.7,
+      stream: true,
+    })
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content
+      if (delta) yield delta
+    }
+  }
+
   estimateCost(usage: TokenUsage, model: string): number {
     const info = this.supportedModels.find((m) => m.id === model)
     if (!info) return 0

@@ -110,7 +110,7 @@ export default function InboxPage() {
 
         {loading && (
           <div className="flex items-center justify-center py-16">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-[hsl(var(--primary))]" />
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-[hsl(var(--primary))]" style={{ borderRadius: '999px' }} />
           </div>
         )}
         {error && <p className="text-center text-red-400 py-8">{error}</p>}
@@ -131,7 +131,7 @@ export default function InboxPage() {
 
         {!loading && suggestions.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[hsl(var(--muted))]">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl clay-card">
               <Inbox className="h-7 w-7 text-muted-foreground" />
             </div>
             <p className="text-base font-medium text-muted-foreground">队列已清空</p>

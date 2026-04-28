@@ -47,29 +47,29 @@ export function FeedFab() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-md transition-all duration-150 hover:scale-105 active:scale-95"
+        className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full clay-button text-[hsl(var(--primary-foreground))] shadow-clay-md transition-all duration-200 hover:scale-105 hover:shadow-clay-lg active:scale-95 active:shadow-clay-pressed"
         title="投喂知识"
       >
         <Plus className="h-5 w-5" />
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[540px] border-border/50 bg-card">
+        <DialogContent className="sm:max-w-[540px]">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold">投喂知识</DialogTitle>
             <p className="text-sm text-muted-foreground">粘贴文本或 URL，AI 会自动抽取知识节点</p>
           </DialogHeader>
 
-          <div className="flex gap-1 rounded-lg bg-muted/50 p-1">
+          <div className="flex gap-1 rounded-xl bg-muted/50 p-1">
             <button
               onClick={() => setMode('text')}
-              className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${mode === 'text' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`flex-1 rounded-xl px-3 py-1.5 text-sm font-medium transition-all ${mode === 'text' ? 'bg-background text-foreground shadow-clay-sm' : 'text-muted-foreground hover:text-foreground'}`}
             >
               文本
             </button>
             <button
               onClick={() => setMode('url')}
-              className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${mode === 'url' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`flex-1 rounded-xl px-3 py-1.5 text-sm font-medium transition-all ${mode === 'url' ? 'bg-background text-foreground shadow-clay-sm' : 'text-muted-foreground hover:text-foreground'}`}
             >
               URL
             </button>

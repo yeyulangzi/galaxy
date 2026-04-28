@@ -141,7 +141,7 @@ export function NodeDetailPanel() {
 
   return (
     <Sheet open onOpenChange={(o) => !o && selectNode(null)}>
-      <SheetContent side="right" className="w-[400px] sm:w-[480px]">
+      <SheetContent side="right" className="w-[400px] sm:w-[480px] overflow-y-auto">
         <SheetHeader>
           <div className="flex items-center justify-between">
             <SheetTitle>节点详情</SheetTitle>
@@ -192,30 +192,38 @@ export function NodeDetailPanel() {
           {aspects.length > 0 && (
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">视角</Label>
-              <div className="flex gap-1 border-b border-border overflow-x-auto">
+              <div className="flex gap-1 border-b border-border/30 overflow-x-auto">
                 {aspects.map((aspect) => (
                   <button
                     key={aspect.template_key}
                     type="button"
                     onClick={() => handleTabChange(aspect.template_key)}
-                    className={`shrink-0 px-3 py-1.5 text-sm transition-colors ${
+                    className={`shrink-0 rounded-t-xl px-3 py-1.5 text-sm transition-all duration-200 ${
                       activeTemplateKey === aspect.template_key
-                        ? 'border-b-2 border-primary text-foreground font-medium'
+                        ? 'border-b-2 border-primary text-foreground font-medium bg-muted/30'
                         : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    {aspect.title}
+                    {aspect.template_key === 'deepdive-summary' ? '💡 Deep Dive 总结' : aspect.title}
                   </button>
                 ))}
               </div>
-              <Textarea
-                value={aspectContent}
-                onChange={(e) => setAspectContent(e.target.value)}
-                onBlur={handleAspectBlur}
-                rows={8}
-                placeholder={activeAspect ? `编辑「${activeAspect.title}」内容…` : ''}
-                className="bg-transparent resize-none text-sm"
-              />
+              {activeTemplateKey === 'deepdive-summary' ? (
+                <div
+                  className="text-sm whitespace-pre-wrap bg-transparent p-2 rounded-md border border-border min-h-[160px] max-h-[300px] overflow-y-auto"
+                >
+                  {aspectContent || '暂无总结内容'}
+                </div>
+              ) : (
+                <Textarea
+                  value={aspectContent}
+                  onChange={(e) => setAspectContent(e.target.value)}
+                  onBlur={handleAspectBlur}
+                  rows={8}
+                  placeholder={activeAspect ? `编辑「${activeAspect.title}」内容…` : ''}
+                  className="bg-transparent resize-none text-sm"
+                />
+              )}
               {aspectSaving && (
                 <p className="text-xs text-muted-foreground">保存中…</p>
               )}
@@ -232,7 +240,7 @@ export function NodeDetailPanel() {
                     key={session.id}
                     type="button"
                     onClick={() => openHistorySession(session.id)}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs rounded-md hover:bg-muted/60 transition-colors text-left"
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs rounded-xl hover:bg-muted/60 transition-colors text-left"
                   >
                     <span className="text-foreground truncate">
                       {session.agent_type === 'direct' ? '直接对话' : session.agent_type === 'thinker' ? '思辨者' : '产品合伙人'}

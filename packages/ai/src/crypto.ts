@@ -41,18 +41,24 @@ export function encrypt(plaintext: string): string {
 export function decrypt(encrypted: string): string {
   const parts = encrypted.split(':')
   if (parts.length !== 3) {
-    throw new Error('Invalid encrypted format: expected iv:tag:ciphertext')
+    // Not in encrypted format — treat as plaintext (backward compat)
+    return encrypted
   }
 
-  const [ivBase64, tagBase64, ciphertextBase64] = parts
-  const key = getEncryptionKey()
-  const iv = Buffer.from(ivBase64, 'base64')
-  const authTag = Buffer.from(tagBase64, 'base64')
-  const ciphertext = Buffer.from(ciphertextBase64, 'base64')
+  try {
+    const [ivBase64, tagBase64, ciphertextBase64] = parts
+    const key = getEncryptionKey()
+    const iv = Buffer.from(ivBase64, 'base64')
+    const authTag = Buffer.from(tagBase64, 'base64')
+    const ciphertext = Buffer.from(ciphertextBase64, 'base64')
 
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv)
-  decipher.setAuthTag(authTag)
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv)
+    decipher.setAuthTag(authTag)
 
-  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()])
-  return decrypted.toString('utf8')
+    const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()])
+    return decrypted.toString('utf8')
+  } catch {
+    // Decryption failed — likely plaintext, return as-is
+    return encrypted
+  }
 }

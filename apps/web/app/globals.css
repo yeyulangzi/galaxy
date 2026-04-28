@@ -7,24 +7,24 @@
 @layer base {
   :root {
     /*
-     * Galaxy — soft dark palette
-     * Warm stone-gray, not deep space black.
+     * Galaxy — Clay / Claymorphism dark palette
+     * Warm stone-gray with soft rounded 3D feel.
      * Accent: terracotta / burnt sienna for warmth.
      */
     --background: 30 8% 12%;
-    --foreground: 40 10% 82%;
+    --foreground: 40 12% 84%;
     --card: 30 7% 15%;
-    --card-foreground: 40 10% 82%;
-    --popover: 30 7% 15%;
-    --popover-foreground: 40 10% 82%;
+    --card-foreground: 40 12% 84%;
+    --popover: 30 7% 16%;
+    --popover-foreground: 40 12% 84%;
     --muted: 30 6% 20%;
-    --muted-foreground: 35 6% 50%;
+    --muted-foreground: 35 8% 52%;
     --primary: 18 70% 55%;
     --primary-foreground: 30 8% 12%;
     --secondary: 30 6% 20%;
-    --secondary-foreground: 40 10% 82%;
+    --secondary-foreground: 40 12% 84%;
     --accent: 30 8% 22%;
-    --accent-foreground: 40 10% 82%;
+    --accent-foreground: 40 12% 84%;
     --destructive: 0 55% 48%;
     --destructive-foreground: 0 0% 98%;
     --success: 155 50% 42%;
@@ -32,7 +32,7 @@
     --border: 30 6% 22%;
     --input: 30 6% 22%;
     --ring: 18 70% 55%;
-    --radius: 0.5rem;
+    --radius: 1rem;
 
     /* Domain colors for graph nodes */
     --node-default: 30 6% 50%;
@@ -50,10 +50,48 @@
     @apply bg-background text-foreground antialiased;
     font-family: 'Figtree', system-ui, sans-serif;
   }
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: hsl(var(--muted)); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 999px;
+  }
   ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+}
+
+@layer components {
+  /* ─── Clay utility classes ─── */
+  .clay-card {
+    background: linear-gradient(145deg, hsl(var(--card)) 0%, hsl(30 7% 13%) 100%);
+    box-shadow:
+      8px 8px 16px hsl(30 8% 8% / 0.4),
+      -4px -4px 12px hsl(30 8% 20% / 0.15),
+      inset 0 1px 0 hsl(30 8% 22% / 0.3);
+    border: 1px solid hsl(30 6% 20% / 0.5);
+    border-radius: 1rem;
+  }
+
+  .clay-button {
+    background: linear-gradient(145deg, hsl(var(--primary)) 0%, hsl(18 65% 48%) 100%);
+    box-shadow:
+      4px 4px 8px hsl(30 8% 8% / 0.3),
+      -2px -2px 6px hsl(30 8% 20% / 0.1),
+      inset 0 1px 0 hsl(18 70% 65% / 0.3);
+    border-radius: 0.75rem;
+  }
+
+  .clay-input {
+    background: hsl(30 7% 13%);
+    box-shadow:
+      inset 2px 2px 4px hsl(30 8% 8% / 0.3),
+      inset -1px -1px 3px hsl(30 8% 20% / 0.1);
+    border-radius: 0.75rem;
+  }
+
+  .clay-surface {
+    backdrop-filter: blur(12px);
+    background: hsl(var(--background) / 0.85);
+  }
 }
 
 @layer utilities {
@@ -62,6 +100,9 @@
   }
   .animate-slide-up {
     animation: slideUp 0.3s ease-out both;
+  }
+  .transition-clay {
+    transition: box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
   }
 }
 

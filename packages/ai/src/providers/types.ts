@@ -57,6 +57,7 @@ export interface LLMProvider {
   readonly capabilities: ProviderCapabilities
 
   invoke(request: LLMRequest): Promise<LLMResponse>
+  stream(request: LLMRequest): AsyncIterable<string>
   estimateCost(usage: TokenUsage, model: string): number
 }
 
