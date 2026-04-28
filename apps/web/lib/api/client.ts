@@ -1,6 +1,23 @@
 import type { Node, Edge, Suggestion, Aspect } from '@galaxy/shared'
 import type { CreateNodeInput, UpdateNodeInput, CreateEdgeInput } from './schemas'
 
+export interface DeepDiveMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  created_at: string
+}
+
+export interface DeepDiveSession {
+  id: string
+  node_id: string
+  agent_type: string
+  status: 'active' | 'completed'
+  messages: DeepDiveMessage[]
+  created_at: string
+  completed_at?: string
+}
+
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
 
 async function handle<T>(res: Response): Promise<T> {
@@ -89,4 +106,61 @@ export const api = {
     fetch(`/api/nodes/${nodeId}/aspects`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(data) }).then(
       (r) => handle<Aspect>(r),
     ),
+
+  // Deep Dive
+  createDeepDiveSession: (nodeId: string, agentType: string) =>
+    fetch('/api/deepdive', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ nodeId, agentType }),
+    }).then((r) => handle<{ sessionId: string }>(r)),
+
+  getDeepDiveSession: (sessionId: string) =>
+    fetch(`/api/deepdive/${sessionId}`).then((r) =>
+      handle<{
+        session: Record<string, unknown>
+        messages: Array<{ id: string; session_id: string; role: string; content: string; created_at: string }>
+      }>(r),
+    ),
+
+  sendDeepDiveMessage: (sessionId: string, content: string) =>
+    fetch(`/api/deepdive/${sessionId}/message`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ content }),
+    }).then((r) =>
+      handle<{
+        message: { id: string; session_id: string; role: string; content: string; created_at: string }
+      }>(r),
+    ),
+
+  completeDeepDive: (sessionId: string) =>
+    fetch(`/api/deepdive/${sessionId}/complete`, { method: 'POST' }).then((r) =>
+      handle<{ suggestionsCreated: number }>(r),
+    ),
+
+  listNodeSessions: (nodeId: string) =>
+    fetch(`/api/nodes/${nodeId}/sessions`).then((r) =>
+      handle<Array<Record<string, unknown>>>(r),
+    ),
+
+  // Deep Dive
+  createDeepDiveSession: (nodeId: string, agentType: string) =>
+    fetch('/api/deepdive', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ nodeId, agentType }) }).then(
+      (r) => handle<DeepDiveSession>(r),
+    ),
+  getDeepDiveSession: (sessionId: string) =>
+    fetch(`/api/deepdive/${sessionId}`).then((r) => handle<DeepDiveSession>(r)),
+  sendDeepDiveMessage: (sessionId: string, content: string) =>
+    fetch(`/api/deepdive/${sessionId}/message`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ content }),
+    }).then((r) => handle<DeepDiveMessage>(r)),
+  completeDeepDive: (sessionId: string) =>
+    fetch(`/api/deepdive/${sessionId}/complete`, { method: 'POST' }).then(
+      (r) => handle<{ suggestionsCreated: number }>(r),
+    ),
+  listNodeSessions: (nodeId: string) =>
+    fetch(`/api/nodes/${nodeId}/sessions`).then((r) => handle<DeepDiveSession[]>(r)),
 }
