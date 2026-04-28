@@ -51,40 +51,36 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
           style: {
             'background-color': 'data(bgColor)',
             'border-width': 0,
-            label: 'data(label)',
+            label: '',
             color: '#e8e0d8',
             'font-family': 'Figtree, system-ui, sans-serif',
-            'font-size': 13,
+            'font-size': 12,
             'font-weight': 500,
             'text-valign': 'bottom',
-            'text-margin-y': 10,
+            'text-margin-y': 8,
             'text-outline-color': '#221e1a',
             'text-outline-width': 3,
-            'text-max-width': '100px',
+            'text-max-width': '110px',
             'text-wrap': 'ellipsis',
-            width: 40,
-            height: 40,
+            width: 'data(size)',
+            height: 'data(size)',
             'overlay-opacity': 0,
-            'transition-property': 'width height opacity',
+            'transition-property': 'width height opacity border-width',
             'transition-duration': 150,
           },
         },
         {
-          selector: 'node[?seed]',
+          selector: 'node.show-label',
           style: {
-            width: 52,
-            height: 52,
-            'font-size': 14,
-            'font-weight': 600,
+            label: 'data(label)',
           },
         },
         {
           selector: 'node:selected',
           style: {
-            'border-width': 3,
+            label: 'data(label)',
+            'border-width': 2,
             'border-color': '#e8e0d8',
-            width: 46,
-            height: 46,
           },
         },
         {
@@ -98,17 +94,20 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
         {
           selector: 'edge',
           style: {
-            width: 1,
-            'line-color': '#383228',
-            'target-arrow-color': '#383228',
+            width: 0.8,
+            'line-color': '#332e28',
+            'target-arrow-color': '#332e28',
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
-            'font-size': 8,
-            'font-family': 'Figtree, system-ui, sans-serif',
-            color: '#4a4238',
-            'text-outline-color': '#221e1a',
-            'text-outline-width': 1,
-            opacity: 0.5,
+            opacity: 0.35,
+          },
+        },
+        {
+          selector: 'edge.neighbor',
+          style: {
+            opacity: 0.6,
+            'line-color': '#4a4238',
+            'target-arrow-color': '#4a4238',
           },
         },
         {
@@ -119,11 +118,30 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
             opacity: 1,
             width: 1.5,
             label: 'data(label)',
+            'font-size': 9,
+            'font-family': 'Figtree, system-ui, sans-serif',
+            color: '#685e52',
+            'text-outline-color': '#221e1a',
+            'text-outline-width': 1,
           },
         },
       ],
     })
     cyRef.current = cy
+
+    // Hover: show label + highlight neighbors
+    cy.on('mouseover', 'node', (e: EventObject) => {
+      const node = e.target
+      node.addClass('show-label')
+      node.neighborhood('node').addClass('show-label')
+      node.connectedEdges().addClass('neighbor')
+    })
+    cy.on('mouseout', 'node', (e: EventObject) => {
+      const node = e.target
+      node.removeClass('show-label')
+      node.neighborhood('node').removeClass('show-label')
+      node.connectedEdges().removeClass('neighbor')
+    })
 
     cy.on('tap', 'node', (e: EventObject) => {
       const id = e.target.id() as string
@@ -166,18 +184,53 @@ export function GraphCanvas({ nodes, edges, onSelectNode, onCreateEdge }: Props)
       return Math.abs(h) % COLORS.length
     }
 
+    // Count connections per node for size scaling
+    const MIN_SIZE = 24
+    const MAX_SIZE = 60
+    const degreeMap = new Map<string, number>()
+    for (const e of edges) {
+      degreeMap.set(e.source_node_id, (degreeMap.get(e.source_node_id) ?? 0) + 1)
+      degreeMap.set(e.target_node_id, (degreeMap.get(e.target_node_id) ?? 0) + 1)
+    }
+    const maxDegree = Math.max(1, ...degreeMap.values())
+    const nodeSize = (id: string) => {
+      const degree = degreeMap.get(id) ?? 0
+      return Math.round(MIN_SIZE + (degree / maxDegree) * (MAX_SIZE - MIN_SIZE))
+    }
+
     cy.add([
       ...nodes.map((n) => ({
         group: 'nodes' as const,
-        data: { id: n.id, label: n.title, seed: n.is_seed ? 1 : 0, bgColor: COLORS[hashIndex(n.id)] },
+        data: {
+          id: n.id,
+          label: n.title,
+          seed: n.is_seed ? 1 : 0,
+          bgColor: COLORS[hashIndex(n.id)],
+          size: nodeSize(n.id),
+        },
       })),
       ...edges.map((e) => ({
         group: 'edges' as const,
         data: { id: e.id, source: e.source_node_id, target: e.target_node_id, label: e.relation_type },
       })),
     ])
-    cy.layout({ name: fcoseRegistered ? 'fcose' : 'grid', animate: false, randomize: nodes.length < 20 } as any).run()
-    cy.fit(undefined, 40)
+
+    // Animated layout
+    const layoutOptions = fcoseRegistered
+      ? {
+          name: 'fcose',
+          animate: true,
+          animationDuration: 600,
+          animationEasing: 'ease-out-quart' as const,
+          randomize: nodes.length < 30,
+          nodeSeparation: 80,
+          idealEdgeLength: 120,
+          nodeRepulsion: () => 6000,
+          gravity: 0.3,
+        }
+      : { name: 'grid', animate: true, animationDuration: 400 }
+    cy.layout(layoutOptions as any).run()
+    cy.fit(undefined, 50)
   }, [nodes, edges])
 
   return (
