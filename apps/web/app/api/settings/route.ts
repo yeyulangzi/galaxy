@@ -3,6 +3,7 @@ import { getDb } from '@galaxy/db'
 import { settings } from '@galaxy/db/schema'
 import { eq } from 'drizzle-orm'
 import { nowIso } from '@galaxy/shared'
+import { encrypt, decrypt } from '@galaxy/ai'
 import { ensureDb } from '@/lib/api/ensure-db'
 
 export const dynamic = 'force-dynamic'
@@ -15,13 +16,23 @@ export async function GET() {
 
   const creds = (row.provider_credentials ?? {}) as Record<string, { api_key?: string }>
 
-  // 构建 masked credentials：只返回 provider 名称和 masked key
+  // 构建 masked credentials：解密后脱敏返回
   const maskedCredentials: Record<string, { has_key: boolean; masked_key: string }> = {}
   for (const [provider, value] of Object.entries(creds)) {
-    const key = value?.api_key ?? ''
+    const encryptedKey = value?.api_key ?? ''
+    if (encryptedKey.length === 0) {
+      maskedCredentials[provider] = { has_key: false, masked_key: '' }
+      continue
+    }
+    let plainKey: string
+    try {
+      plainKey = decrypt(encryptedKey)
+    } catch {
+      plainKey = encryptedKey
+    }
     maskedCredentials[provider] = {
-      has_key: key.length > 0,
-      masked_key: key.length > 8 ? key.slice(0, 4) + '****' + key.slice(-4) : key.length > 0 ? '****' : '',
+      has_key: true,
+      masked_key: plainKey.length > 8 ? plainKey.slice(0, 4) + '****' + plainKey.slice(-4) : '****',
     }
   }
 
@@ -62,15 +73,12 @@ export async function PATCH(req: NextRequest) {
     for (const [providerId, value] of Object.entries(incomingCreds)) {
       const newKey = value?.api_key ?? ''
       if (newKey === '__KEEP__') {
-        // 保留原有 key，不做任何操作
         continue
       }
       if (newKey === '') {
-        // 空字符串表示删除
         delete mergedCreds[providerId]
       } else {
-        // 新 key 或覆盖
-        mergedCreds[providerId] = { api_key: newKey }
+        mergedCreds[providerId] = { api_key: encrypt(newKey) }
       }
     }
     patch.provider_credentials = mergedCreds
@@ -84,10 +92,20 @@ export async function PATCH(req: NextRequest) {
   const updatedCreds = (updated.provider_credentials ?? {}) as Record<string, { api_key?: string }>
   const maskedCredentials: Record<string, { has_key: boolean; masked_key: string }> = {}
   for (const [provider, value] of Object.entries(updatedCreds)) {
-    const key = value?.api_key ?? ''
+    const encryptedKey = value?.api_key ?? ''
+    if (encryptedKey.length === 0) {
+      maskedCredentials[provider] = { has_key: false, masked_key: '' }
+      continue
+    }
+    let plainKey: string
+    try {
+      plainKey = decrypt(encryptedKey)
+    } catch {
+      plainKey = encryptedKey
+    }
     maskedCredentials[provider] = {
-      has_key: key.length > 0,
-      masked_key: key.length > 8 ? key.slice(0, 4) + '****' + key.slice(-4) : key.length > 0 ? '****' : '',
+      has_key: true,
+      masked_key: plainKey.length > 8 ? plainKey.slice(0, 4) + '****' + plainKey.slice(-4) : '****',
     }
   }
   const configuredProviders = Object.entries(updatedCreds)

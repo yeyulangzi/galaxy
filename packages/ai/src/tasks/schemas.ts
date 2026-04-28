@@ -24,9 +24,18 @@ export const NewEdgeExtractionSchema = z.object({
   rationale: z.string(),
 })
 
+export const FillAspectExtractionSchema = z.object({
+  node_title: z.string(),
+  template_key: z.string(),
+  content: z.string(),
+  confidence: z.number().min(0).max(1),
+  rationale: z.string(),
+})
+
 export const FeedExtractionResultSchema = z.object({
   new_nodes: z.array(NewNodeExtractionSchema),
   new_edges: z.array(NewEdgeExtractionSchema).default([]),
+  fill_aspects: z.array(FillAspectExtractionSchema).default([]),
 })
 
 export type FeedExtractionResult = z.infer<typeof FeedExtractionResultSchema>

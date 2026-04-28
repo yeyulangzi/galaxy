@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@galaxy/db'
 import { settings } from '@galaxy/db/schema'
 import { eq } from 'drizzle-orm'
-import { ProviderRegistry } from '@galaxy/ai'
+import { ProviderRegistry, decrypt } from '@galaxy/ai'
 import { ensureDb } from '@/lib/api/ensure-db'
 
 export const dynamic = 'force-dynamic'
@@ -53,11 +53,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data: { ok: false, error: `未配置 ${rawProviderId} 的 API Key` } })
   }
 
+  let plainApiKey: string
+  try {
+    plainApiKey = decrypt(providerCred.api_key)
+  } catch {
+    plainApiKey = providerCred.api_key
+  }
+
   // 注册 provider 并调用测试
   const registry = new ProviderRegistry()
   try {
     registry.registerBuiltIn(registryProviderId as Parameters<typeof registry.registerBuiltIn>[0], {
-      apiKey: providerCred.api_key,
+      apiKey: plainApiKey,
     })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '注册 Provider 失败'

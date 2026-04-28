@@ -125,6 +125,26 @@ export async function extractFromFeed(input: ExtractFromFeedInput): Promise<Extr
     suggestionsCreated++
   }
 
+  for (const aspect of data.fill_aspects ?? []) {
+    db.insert(suggestions)
+      .values({
+        id: generateId('s'),
+        type: 'fill_aspect',
+        source: 'feed',
+        source_ref_id: input.feedItemId,
+        payload: JSON.stringify(aspect),
+        rationale: aspect.rationale,
+        confidence: aspect.confidence,
+        status: 'pending',
+        created_at: now,
+        expires_at: expiresAt,
+        provider_id: input.provider.id,
+        model: input.model,
+      })
+      .run()
+    suggestionsCreated++
+  }
+
   // 4. 更新 feed_items
   db.update(feedItems)
     .set({ status: 'done', suggestions_count: suggestionsCreated })

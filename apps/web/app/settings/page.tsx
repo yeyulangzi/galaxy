@@ -21,6 +21,14 @@ const PROVIDERS = [
 
 type MaskedCred = { has_key: boolean; masked_key: string }
 
+interface CostStats {
+  totalCostUsd: number
+  totalCalls: number
+  thisMonthCostUsd: number
+  thisMonthCalls: number
+  byProvider: Array<{ providerId: string; costUsd: number; calls: number }>
+}
+
 export default function SettingsPage() {
   const { settings, loading, loadSettings, updateSettings } = useSettingsStore()
   const [defaultProvider, setDefaultProvider] = useState('')
@@ -29,8 +37,12 @@ export default function SettingsPage() {
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({})
   const [savingKeys, setSavingKeys] = useState<Record<string, boolean>>({})
   const [testingKeys, setTestingKeys] = useState<Record<string, 'idle' | 'testing' | 'success' | 'error'>>({})
+  const [costStats, setCostStats] = useState<CostStats | null>(null)
 
   useEffect(() => { loadSettings() }, [loadSettings])
+  useEffect(() => {
+    api.getCostStats().then(setCostStats).catch(() => {})
+  }, [])
   useEffect(() => {
     if (settings) {
       setDefaultProvider((settings.default_provider as string) ?? '')
@@ -313,6 +325,40 @@ export default function SettingsPage() {
               </div>
             </label>
           </div>
+        </section>
+
+        <hr className="border-border/30" />
+
+        {/* AI 用量统计 */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-foreground">AI 用量统计</h2>
+          {costStats ? (
+            <div className="space-y-1.5 text-[13px]">
+              <p>
+                <span className="text-muted-foreground">本月花费：</span>
+                <span className="font-medium">${costStats.thisMonthCostUsd.toFixed(4)}</span>
+                <span className="text-muted-foreground ml-2">（{costStats.thisMonthCalls} 次调用）</span>
+              </p>
+              <p>
+                <span className="text-muted-foreground">累计花费：</span>
+                <span className="font-medium">${costStats.totalCostUsd.toFixed(4)}</span>
+                <span className="text-muted-foreground ml-2">（{costStats.totalCalls} 次调用）</span>
+              </p>
+              {costStats.byProvider.length > 0 && (
+                <div className="mt-2 space-y-0.5">
+                  <p className="text-[11px] text-muted-foreground">按 Provider 分布：</p>
+                  {costStats.byProvider.map((provider) => (
+                    <p key={provider.providerId} className="text-[12px] pl-2">
+                      <span className="font-medium">{provider.providerId}</span>
+                      <span className="text-muted-foreground"> — ${provider.costUsd.toFixed(4)}，{provider.calls} 次</span>
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-[13px] text-muted-foreground">加载中…</p>
+          )}
         </section>
       </div>
     </>

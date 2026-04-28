@@ -70,6 +70,18 @@ export const api = {
       body: JSON.stringify(input),
     }).then((r) => handle<{ ok: boolean; model?: string; latencyMs?: number; error?: string }>(r)),
 
+  // Cost Stats
+  getCostStats: () =>
+    fetch('/api/settings/cost-stats').then((r) =>
+      handle<{
+        totalCostUsd: number
+        totalCalls: number
+        thisMonthCostUsd: number
+        thisMonthCalls: number
+        byProvider: Array<{ providerId: string; costUsd: number; calls: number }>
+      }>(r),
+    ),
+
   // Aspects
   listAspects: (nodeId: string) =>
     fetch(`/api/nodes/${nodeId}/aspects`).then((r) => handle<Aspect[]>(r)),

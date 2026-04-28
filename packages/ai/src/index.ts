@@ -1,3 +1,4 @@
+export { encrypt, decrypt } from './crypto'
 export { ProviderRegistry } from './providers/registry'
 export { DirectChannel } from './direct-channel'
 export { checkBudget, addCost } from './budget'
