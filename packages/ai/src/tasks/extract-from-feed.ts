@@ -69,7 +69,7 @@ export async function extractFromFeed(input: ExtractFromFeedInput): Promise<Extr
         { role: 'system', content: '你是一个知识图谱助手，帮助用户从文本中抽取结构化知识。' },
         { role: 'user', content: finalPrompt },
       ],
-      maxTokens: 8192,
+      maxTokens: 262144,
       temperature: 0.3,
     },
     schema: FeedExtractionResultSchema,
