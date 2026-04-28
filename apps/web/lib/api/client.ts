@@ -163,4 +163,73 @@ export const api = {
     ),
   listNodeSessions: (nodeId: string) =>
     fetch(`/api/nodes/${nodeId}/sessions`).then((r) => handle<DeepDiveSession[]>(r)),
+
+  // Scan
+  triggerScan: () =>
+    fetch('/api/scan/trigger', { method: 'POST' }).then((r) =>
+      handle<{ scanRunId: string }>(r),
+    ),
+  getScanStatus: () =>
+    fetch('/api/scan/status').then((r) =>
+      handle<Array<{
+        id: string
+        trigger: string
+        status: string
+        started_at: string
+        finished_at: string | null
+        suggestions_count: number
+        cost_tokens: number
+        cost_usd: number
+        error_message: string | null
+      }>>(r),
+    ),
+
+  // Bridge
+  startBridgeTask: (sessionId: string) =>
+    fetch(`/api/deepdive/${sessionId}/bridge`, { method: 'POST' }).then((r) =>
+      handle<{ taskPath: string }>(r),
+    ),
+  pollBridgeResult: (sessionId: string) =>
+    fetch(`/api/deepdive/${sessionId}/bridge`).then((r) =>
+      handle<{ status: 'pending' | 'done'; result?: unknown }>(r),
+    ),
+  cancelBridgeTask: (sessionId: string) =>
+    fetch(`/api/deepdive/${sessionId}/bridge`, { method: 'DELETE' }).then((r) =>
+      handle<{ cancelled: boolean }>(r),
+    ),
+
+  // Risk Control
+  getRiskData: () =>
+    fetch('/api/risk').then((r) =>
+      handle<{
+        acceptance: { accepted: number; total: number; rate: number }
+        inboxBacklog: number
+        budget: { enabled: boolean; monthlyBudgetUsd: number; currentCostUsd: number; usageRate: number }
+        duplicateNodes: Array<{ nodeA: string; nodeB: string; titleA: string; titleB: string; similarity: number }>
+      }>(r),
+    ),
+
+  // Data Safety
+  triggerBackup: () =>
+    fetch('/api/data/backup', { method: 'POST' }).then((r) =>
+      handle<{ backupPath: string; backupsCount: number }>(r),
+    ),
+  exportData: (format: 'json' | 'markdown') =>
+    fetch(`/api/data/export?format=${format}`).then(async (r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const blob = await r.blob()
+      const extension = format === 'json' ? 'json' : 'md'
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `galaxy-export.${extension}`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    }),
+
+  // Safety Mode
+  killAllAI: () =>
+    fetch('/api/safety/kill-all', { method: 'POST' }).then((r) =>
+      handle<{ disabled: true }>(r),
+    ),
 }

@@ -54,6 +54,7 @@ export async function PATCH(req: NextRequest) {
     'default_provider', 'default_model',
     'provider_credentials', 'task_provider_overrides', 'custom_providers',
     'enable_monthly_budget', 'monthly_budget_usd',
+    'proactive_scan_cron', 'proactive_scan_max_suggestions', 'proactive_scan_strategies',
   ] as const
 
   const patch: Record<string, unknown> = { updated_at: nowIso() }
