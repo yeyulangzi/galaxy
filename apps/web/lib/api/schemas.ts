@@ -65,3 +65,9 @@ export const BatchConfirmSchema = z.object({
   decision_note: z.string().max(500).optional(),
 })
 export type BatchConfirmInput = z.infer<typeof BatchConfirmSchema>
+
+export const UpdateAspectSchema = z.object({
+  templateKey: z.string().min(1).max(100),
+  content: z.string().max(100000),
+})
+export type UpdateAspectInput = z.infer<typeof UpdateAspectSchema>

@@ -1,4 +1,4 @@
-import type { Node, Edge, Suggestion } from '@galaxy/shared'
+import type { Node, Edge, Suggestion, Aspect } from '@galaxy/shared'
 import type { CreateNodeInput, UpdateNodeInput, CreateEdgeInput } from './schemas'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
@@ -61,5 +61,20 @@ export const api = {
   updateSettings: (input: Record<string, unknown>) =>
     fetch('/api/settings', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(input) }).then((r) =>
       handle<Record<string, unknown>>(r),
+    ),
+
+  testConnection: (input: { providerId: string; model?: string }) =>
+    fetch('/api/settings/test-connection', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify(input),
+    }).then((r) => handle<{ ok: boolean; model?: string; latencyMs?: number; error?: string }>(r)),
+
+  // Aspects
+  listAspects: (nodeId: string) =>
+    fetch(`/api/nodes/${nodeId}/aspects`).then((r) => handle<Aspect[]>(r)),
+  updateAspect: (nodeId: string, data: { templateKey: string; content: string }) =>
+    fetch(`/api/nodes/${nodeId}/aspects`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(data) }).then(
+      (r) => handle<Aspect>(r),
     ),
 }

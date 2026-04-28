@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { toast } from 'sonner'
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useSettingsStore } from '@/lib/store/settings-store'
+import { api } from '@/lib/api/client'
 import { NavBar } from '../_components/nav-bar'
 
 /** 支持的 Provider 定义 */
@@ -27,6 +28,7 @@ export default function SettingsPage() {
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({})
   const [savingKeys, setSavingKeys] = useState<Record<string, boolean>>({})
+  const [testingKeys, setTestingKeys] = useState<Record<string, 'idle' | 'testing' | 'success' | 'error'>>({})
 
   useEffect(() => { loadSettings() }, [loadSettings])
   useEffect(() => {
@@ -100,6 +102,26 @@ export default function SettingsPage() {
     }
   }, [maskedCredentials, updateSettings, loadSettings])
 
+  const testConnection = useCallback(async (providerId: string) => {
+    setTestingKeys((prev) => ({ ...prev, [providerId]: 'testing' }))
+    try {
+      const result = await api.testConnection({ providerId })
+      if (result.ok) {
+        setTestingKeys((prev) => ({ ...prev, [providerId]: 'success' }))
+        toast.success(`连接成功 — ${result.model}，延迟 ${result.latencyMs}ms`)
+        setTimeout(() => setTestingKeys((prev) => ({ ...prev, [providerId]: 'idle' })), 3000)
+      } else {
+        setTestingKeys((prev) => ({ ...prev, [providerId]: 'error' }))
+        toast.error(`连接失败: ${result.error}`)
+        setTimeout(() => setTestingKeys((prev) => ({ ...prev, [providerId]: 'idle' })), 3000)
+      }
+    } catch (error: unknown) {
+      setTestingKeys((prev) => ({ ...prev, [providerId]: 'error' }))
+      toast.error(error instanceof Error ? error.message : '测试连接失败')
+      setTimeout(() => setTestingKeys((prev) => ({ ...prev, [providerId]: 'idle' })), 3000)
+    }
+  }, [])
+
   const onSaveGeneral = async () => {
     try {
       await updateSettings({ default_provider: defaultProvider, default_model: defaultModel })
@@ -130,6 +152,7 @@ export default function SettingsPage() {
             const inputValue = apiKeys[provider.id] ?? ''
             const isVisible = visibleKeys[provider.id] ?? false
             const isSaving = savingKeys[provider.id] ?? false
+            const testStatus = testingKeys[provider.id] ?? 'idle'
 
             return (
               <div key={provider.id} className="space-y-1.5">
@@ -175,6 +198,20 @@ export default function SettingsPage() {
                   >
                     {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '保存'}
                   </Button>
+                  {hasKey && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => testConnection(provider.id)}
+                      disabled={testStatus === 'testing'}
+                      className="h-8 px-2.5"
+                    >
+                      {testStatus === 'testing' && <><Loader2 className="mr-1 h-3 w-3 animate-spin" />测试中…</>}
+                      {testStatus === 'success' && <span className="text-[hsl(var(--success))]">✓ 成功</span>}
+                      {testStatus === 'error' && <span className="text-destructive">✗ 失败</span>}
+                      {testStatus === 'idle' && <><Zap className="mr-1 h-3 w-3" />测试</>}
+                    </Button>
+                  )}
                 </div>
               </div>
             )
