@@ -86,34 +86,44 @@ export default function SettingsPage() {
     setVisibleKeys((prev) => ({ ...prev, [providerId]: !prev[providerId] }))
   }, [])
 
-  const saveApiKey = useCallback(async (providerId: string) => {
-    const key = apiKeys[providerId]
-    if (!key || key.trim().length === 0) {
+  const saveProviderConfig = useCallback(async (providerId: string) => {
+    const key = apiKeys[providerId]?.trim() ?? ''
+    const providerBaseUrl = baseUrls[providerId]?.trim() || undefined
+    const hasExistingKey = (maskedCredentials[providerId]?.has_key) ?? false
+
+    if (!key && !hasExistingKey) {
       toast.error('请输入 API Key')
       return
     }
+
     setSavingKeys((prev) => ({ ...prev, [providerId]: true }))
     try {
-      // 合并现有 credentials
-      const existingCreds = (settings?.provider_credentials_patch ?? {}) as Record<string, { api_key: string; base_url?: string }>
       const newCreds: Record<string, { api_key: string; base_url?: string }> = {}
-      // 保留其他 provider 的 key（用 placeholder 标记）
+      // 保留其他 provider 的配置
       for (const p of PROVIDERS) {
-        const existing = existingCreds[p.id]
-        if (existing) newCreds[p.id] = existing
+        if (p.id !== providerId) {
+          const cred = maskedCredentials[p.id]
+          if (cred?.has_key) {
+            newCreds[p.id] = { api_key: '__KEEP__', base_url: cred.base_url }
+          }
+        }
       }
-      const providerBaseUrl = baseUrls[providerId]?.trim() || undefined
-      newCreds[providerId] = { api_key: key.trim(), base_url: providerBaseUrl }
+      // 当前 provider：有新 key 就用新 key，否则保留旧 key
+      newCreds[providerId] = {
+        api_key: key || '__KEEP__',
+        base_url: providerBaseUrl,
+      }
       await updateSettings({ provider_credentials: newCreds })
       setApiKeys((prev) => ({ ...prev, [providerId]: '' }))
-      toast.success(`${PROVIDERS.find((p) => p.id === providerId)?.label} API Key 已保存`)
+      const label = PROVIDERS.find((p) => p.id === providerId)?.label
+      toast.success(key ? `${label} 配置已保存` : `${label} Base URL 已更新`)
       await loadSettings()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : '保存失败')
     } finally {
       setSavingKeys((prev) => ({ ...prev, [providerId]: false }))
     }
-  }, [apiKeys, settings, updateSettings, loadSettings])
+  }, [apiKeys, baseUrls, maskedCredentials, updateSettings, loadSettings])
 
   const removeApiKey = useCallback(async (providerId: string) => {
     setSavingKeys((prev) => ({ ...prev, [providerId]: true }))
@@ -235,8 +245,8 @@ export default function SettingsPage() {
                   </div>
                   <Button
                     size="sm"
-                    onClick={() => saveApiKey(provider.id)}
-                    disabled={!inputValue.trim() || isSaving}
+                    onClick={() => saveProviderConfig(provider.id)}
+                    disabled={(!inputValue.trim() && !(baseUrls[provider.id]?.trim()) && !hasKey) || isSaving}
                     className="h-8 px-3"
                   >
                     {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '保存'}
