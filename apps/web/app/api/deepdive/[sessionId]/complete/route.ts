@@ -47,41 +47,57 @@ export async function POST(
     .orderBy(deepDiveMessages.created_at)
     .all()
 
+  // 立即标记 session 为 completed（前端秒响应）
+  const now = nowIso()
+  db.update(deepDiveSessions)
+    .set({ status: 'completed', updated_at: now })
+    .where(eq(deepDiveSessions.id, sessionId))
+    .run()
+
   if (messages.length === 0) {
-    // 无对话内容，直接结束
-    db.update(deepDiveSessions)
-      .set({ status: 'completed', updated_at: nowIso() })
-      .where(eq(deepDiveSessions.id, sessionId))
-      .run()
-    return NextResponse.json({ data: { suggestionsCreated: 0 } })
+    return NextResponse.json({ data: { suggestionsCreated: 0, async: false } })
   }
 
-  // 构建 provider
+  // 异步提取建议（不阻塞响应）
+  extractSuggestionsAsync(sessionId, session, messages).catch((err) =>
+    console.error('[complete] async extraction failed:', err),
+  )
+
+  return NextResponse.json({ data: { suggestionsCreated: -1, async: true } })
+}
+
+/** 后台异步提取建议，不阻塞 HTTP 响应 */
+async function extractSuggestionsAsync(
+  sessionId: string,
+  session: { provider_id: string | null; model: string | null },
+  messages: Array<{ role: string; content: string }>,
+) {
+  const db = getDb()
+
   const settingsRow = db.select().from(settings).where(eq(settings.id, 1)).get()
   if (!settingsRow) {
-    return NextResponse.json({ error: 'Settings not initialized' }, { status: 500 })
+    console.error('[complete] settings not found, skip extraction')
+    return
   }
 
   const registry = new ProviderRegistry()
-  const creds = (settingsRow.provider_credentials ?? {}) as Record<string, { api_key?: string }>
+  const creds = (settingsRow.provider_credentials ?? {}) as Record<string, { api_key?: string; base_url?: string }>
 
   for (const [providerId, value] of Object.entries(creds)) {
     const encryptedKey = value?.api_key ?? ''
     if (!encryptedKey) continue
-    let apiKey: string
     try {
-      apiKey = decrypt(encryptedKey)
+      const apiKey = decrypt(encryptedKey)
+      registry.registerBuiltIn(providerId as Parameters<ProviderRegistry['registerBuiltIn']>[0], { apiKey, baseUrl: value?.base_url ?? (settingsRow.default_base_url as string | undefined) })
     } catch {
-      continue
+      // skip invalid key
     }
-    registry.registerBuiltIn(providerId as Parameters<ProviderRegistry['registerBuiltIn']>[0], { apiKey })
   }
 
   const providerId = session.provider_id ?? (settingsRow.default_provider as string) ?? 'openai'
   const model = session.model ?? (settingsRow.default_model as string) ?? 'gpt-4o'
   const provider = registry.getOrThrow(providerId)
 
-  // 从对话中提取建议
   const conversationForExtraction = messages.map((m) => ({
     role: m.role,
     content: m.content,
@@ -93,10 +109,8 @@ export async function POST(
     model,
   )
 
-  // 写入 suggestions 表
   const now = nowIso()
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-  let suggestionsCreated = 0
   const suggestionIds: string[] = []
 
   for (const node of extractionResult.new_nodes) {
@@ -118,7 +132,6 @@ export async function POST(
         model,
       })
       .run()
-    suggestionsCreated++
   }
 
   for (const edge of extractionResult.new_edges) {
@@ -140,7 +153,6 @@ export async function POST(
         model,
       })
       .run()
-    suggestionsCreated++
   }
 
   for (const aspect of extractionResult.fill_aspects ?? []) {
@@ -162,18 +174,12 @@ export async function POST(
         model,
       })
       .run()
-    suggestionsCreated++
   }
 
-  // 更新 session 状态
   db.update(deepDiveSessions)
-    .set({
-      status: 'completed',
-      final_suggestion_ids: JSON.stringify(suggestionIds),
-      updated_at: now,
-    })
+    .set({ final_suggestion_ids: JSON.stringify(suggestionIds), updated_at: nowIso() })
     .where(eq(deepDiveSessions.id, sessionId))
     .run()
 
-  return NextResponse.json({ data: { suggestionsCreated } })
+  console.log(`[complete] async extraction done for session ${sessionId}: ${suggestionIds.length} suggestions`)
 }

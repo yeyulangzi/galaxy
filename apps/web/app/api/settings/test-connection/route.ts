@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data: { ok: false, error: '设置未初始化' } }, { status: 500 })
   }
 
-  const credentials = (row.provider_credentials ?? {}) as Record<string, { api_key?: string }>
+  const credentials = (row.provider_credentials ?? {}) as Record<string, { api_key?: string; base_url?: string }>
   const providerCred = credentials[rawProviderId]
   if (!providerCred?.api_key) {
     return NextResponse.json({ data: { ok: false, error: `未配置 ${rawProviderId} 的 API Key` } })
@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
   try {
     registry.registerBuiltIn(registryProviderId as Parameters<typeof registry.registerBuiltIn>[0], {
       apiKey: plainApiKey,
+      baseUrl: providerCred.base_url,
     })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '注册 Provider 失败'

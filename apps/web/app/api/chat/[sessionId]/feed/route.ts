@@ -33,7 +33,7 @@ function buildRegistry(): {
   const registry = new ProviderRegistry()
   const credentials = (row.provider_credentials ?? {}) as Record<
     string,
-    { api_key?: string }
+    { api_key?: string; base_url?: string }
   >
 
   for (const [providerId, value] of Object.entries(credentials)) {
@@ -47,14 +47,14 @@ function buildRegistry(): {
     }
     registry.registerBuiltIn(
       providerId as Parameters<ProviderRegistry['registerBuiltIn']>[0],
-      { apiKey },
+      { apiKey, baseUrl: value?.base_url ?? (row.default_base_url as string | undefined) },
     )
   }
 
   return {
     registry,
-    defaultProviderId: (row.default_provider as string) ?? 'openai',
-    defaultModel: (row.default_model as string) ?? 'gpt-4o',
+    defaultProviderId: (row.default_provider as string) ?? '',
+    defaultModel: (row.default_model as string) ?? '',
   }
 }
 

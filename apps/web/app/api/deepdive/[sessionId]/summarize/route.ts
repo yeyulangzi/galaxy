@@ -14,6 +14,8 @@ import {
   decrypt,
   ProviderRegistry,
   summarizeConversation,
+  extractAspectsFromConversation,
+  loadAspectTemplates,
   DirectChannel,
 } from '@galaxy/ai'
 import { ensureDb } from '@/lib/api/ensure-db'
@@ -35,7 +37,7 @@ function buildRegistry(): {
   const registry = new ProviderRegistry()
   const creds = (row.provider_credentials ?? {}) as Record<
     string,
-    { api_key?: string }
+    { api_key?: string; base_url?: string }
   >
 
   for (const [providerId, value] of Object.entries(creds)) {
@@ -49,14 +51,14 @@ function buildRegistry(): {
     }
     registry.registerBuiltIn(
       providerId as Parameters<ProviderRegistry['registerBuiltIn']>[0],
-      { apiKey },
+      { apiKey, baseUrl: value?.base_url ?? (row.default_base_url as string | undefined) },
     )
   }
 
   return {
     registry,
-    defaultProviderId: (row.default_provider as string) ?? 'openai',
-    defaultModel: (row.default_model as string) ?? 'gpt-4o',
+    defaultProviderId: (row.default_provider as string) ?? '',
+    defaultModel: (row.default_model as string) ?? '',
   }
 }
 
@@ -73,6 +75,33 @@ function resolvePromptsDir(): string {
   )
 }
 
+function resolveAspectsDir(): string {
+  const candidates = [
+    path.resolve(process.cwd(), 'data', 'aspects'),
+    path.resolve(process.cwd(), '..', '..', 'data', 'aspects'),
+  ]
+  for (const dir of candidates) {
+    if (fs.existsSync(dir)) return dir
+  }
+  throw new Error(
+    `Cannot find data/aspects folder. Tried: ${candidates.join(', ')}`,
+  )
+}
+
+function resolveSummariesDir(nodeId: string): string {
+  const candidates = [
+    path.resolve(process.cwd(), 'data', 'summaries', nodeId),
+    path.resolve(process.cwd(), '..', '..', 'data', 'summaries', nodeId),
+  ]
+  // Return the first candidate whose parent exists, or the first one to create
+  for (const dir of candidates) {
+    const parent = path.dirname(dir)
+    const grandparent = path.dirname(parent)
+    if (fs.existsSync(grandparent)) return dir
+  }
+  return candidates[0]!
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { sessionId: string } },
@@ -82,11 +111,11 @@ export async function POST(
   const { sessionId } = params
 
   const body = await req.json().catch(() => ({}))
-  const { mode } = body as { mode?: 'feed' | 'aspect' }
+  const { mode } = body as { mode?: 'feed' | 'aspect' | 'extract-aspects' }
 
-  if (!mode || (mode !== 'feed' && mode !== 'aspect')) {
+  if (!mode || !['feed', 'aspect', 'extract-aspects'].includes(mode)) {
     return NextResponse.json(
-      { error: 'mode must be "feed" or "aspect"' },
+      { error: 'mode must be "feed", "aspect", or "extract-aspects"' },
       { status: 400 },
     )
   }
@@ -190,54 +219,93 @@ export async function POST(
     }
   }
 
-  // mode === 'aspect'
-  const templateKey = 'deepdive-summary'
-  const aspectTitle = 'Deep Dive 总结'
-  const now = nowIso()
-
-  // 查询是否已存在同 node_id + template_key 的 aspect
-  const existingAspect = db
-    .select()
-    .from(aspects)
-    .where(
-      and(
-        eq(aspects.node_id, session.node_id),
-        eq(aspects.template_key, templateKey),
-      ),
+  // mode === 'extract-aspects'
+  if (mode === 'extract-aspects') {
+    const aspectsTemplatesDir = resolveAspectsDir()
+    const templates = loadAspectTemplates(aspectsTemplatesDir)
+    const extractResult = await extractAspectsFromConversation(
+      node.title,
+      conversationForSummary,
+      templates,
+      provider,
+      model,
     )
-    .get()
 
-  let aspectId: string
+    const now = nowIso()
+    let aspectsUpdated = 0
 
-  if (existingAspect) {
-    // 追加内容，用分隔线分隔
-    const updatedContent = `${existingAspect.content}\n\n---\n\n${summary.markdown}`
-    db.update(aspects)
-      .set({ content: updatedContent, updated_at: now })
-      .where(eq(aspects.id, existingAspect.id))
-      .run()
-    aspectId = existingAspect.id
-  } else {
-    aspectId = generateId('asp')
-    db.insert(aspects)
-      .values({
-        id: aspectId,
-        node_id: session.node_id,
-        template_key: templateKey,
-        title: aspectTitle,
-        content: summary.markdown,
-        created_at: now,
-        updated_at: now,
-        created_by: 'ai_deepdive',
-      })
-      .run()
+    for (const extracted of extractResult.aspects) {
+      const existing = db
+        .select()
+        .from(aspects)
+        .where(
+          and(
+            eq(aspects.node_id, session.node_id),
+            eq(aspects.title, extracted.title),
+          ),
+        )
+        .get()
+
+      if (existing) {
+        const updatedContent = existing.content
+          ? `${existing.content}\n\n---\n\n${extracted.content}`
+          : extracted.content
+        db.update(aspects)
+          .set({ content: updatedContent, updated_at: now })
+          .where(eq(aspects.id, existing.id))
+          .run()
+      } else {
+        const template = templates.find((t) => t.title === extracted.title)
+        db.insert(aspects)
+          .values({
+            id: generateId('a'),
+            node_id: session.node_id,
+            title: extracted.title,
+            content: extracted.content,
+            source_type: 'dialogue',
+            source_id: session.id,
+            order: template?.order ?? 99,
+            created_at: now,
+            updated_at: now,
+            created_by: 'ai_deepdive',
+          })
+          .run()
+      }
+      aspectsUpdated++
+    }
+
+    return NextResponse.json({
+      data: {
+        mode: 'extract-aspects',
+        aspectsUpdated,
+      },
+    })
   }
+
+  // mode === 'aspect' — save summary as .md file attachment
+  const now = nowIso()
+  const timestamp = now.replace(/[:.]/g, '-').slice(0, 19)
+  const safeTitle = node.title.replace(/[\/\\:*?"<>|]/g, '_').slice(0, 40)
+  const fileName = `${safeTitle}-${timestamp}.md`
+
+  const summariesDir = resolveSummariesDir(session.node_id)
+  if (!fs.existsSync(summariesDir)) {
+    fs.mkdirSync(summariesDir, { recursive: true })
+  }
+
+  const filePath = path.join(summariesDir, fileName)
+  const fileContent = `# ${summary.title}\n\n> 节点：${node.title} | 生成于 ${now}\n\n${summary.markdown}`
+  fs.writeFileSync(filePath, fileContent, 'utf-8')
+
+  // Return a relative path for the frontend to use
+  const relativePath = `summaries/${session.node_id}/${fileName}`
 
   return NextResponse.json({
     data: {
       mode: 'aspect',
       summary: summary.markdown,
-      aspectId,
+      fileName,
+      filePath: relativePath,
     },
   })
 }

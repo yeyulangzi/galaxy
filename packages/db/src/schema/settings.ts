@@ -19,12 +19,13 @@ export const settings = sqliteTable('settings', {
   // 多 Provider 配置
   default_provider: text('default_provider'),
   default_model: text('default_model'),
+  default_base_url: text('default_base_url'),
   provider_credentials: text('provider_credentials', { mode: 'json' }),
   task_provider_overrides: text('task_provider_overrides', { mode: 'json' }),
   custom_providers: text('custom_providers', { mode: 'json' }),
 
   // 桥接配置
-  qoder_bridge_dir: text('qoder_bridge_dir'),
+  qoder_bridge_dir: text('qoder_bridge_dir').default('~/galaxy/bridge/'),
   bridge_timeout_minutes: integer('bridge_timeout_minutes').notNull().default(30),
 
   // 风险控制

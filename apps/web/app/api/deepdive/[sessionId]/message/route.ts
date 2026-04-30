@@ -13,11 +13,26 @@ import {
   decrypt,
   ProviderRegistry,
   buildDeepDiveSystemPrompt,
+  setAgentPromptPath,
   type DeepDiveContext,
+  type DeepDiveAgentType,
 } from '@galaxy/ai'
 import { ensureDb } from '@/lib/api/ensure-db'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * 模块加载时把环境变量里的 agent prompt 文件路径注入到 @galaxy/ai。
+ * 默认指向开发者本机 Qoder 工作区里的 .md 文件；生产/其他机器请通过环境变量覆盖。
+ */
+const DEFAULT_THINKER_PROMPT_PATH =
+  process.env.GALAXY_AGENT_PROMPT_THINKER ??
+  '/Users/eleme/qoder/曹鹏的工作区/agents/thinker/system_prompt.md'
+const DEFAULT_PARTNER_PROMPT_PATH =
+  process.env.GALAXY_AGENT_PROMPT_PARTNER ?? '/Users/eleme/.qoder/agents/product-partner.md'
+
+setAgentPromptPath('thinker', DEFAULT_THINKER_PROMPT_PATH)
+setAgentPromptPath('partner', DEFAULT_PARTNER_PROMPT_PATH)
 
 /**
  * 从 settings 中读取并构建 ProviderRegistry，返回 registry 和默认 provider/model。
@@ -28,7 +43,7 @@ function buildRegistry(): { registry: ProviderRegistry; defaultProviderId: strin
   if (!row) throw new Error('Settings not initialized')
 
   const registry = new ProviderRegistry()
-  const creds = (row.provider_credentials ?? {}) as Record<string, { api_key?: string }>
+  const creds = (row.provider_credentials ?? {}) as Record<string, { api_key?: string; base_url?: string }>
 
   for (const [providerId, value] of Object.entries(creds)) {
     const encryptedKey = value?.api_key ?? ''
@@ -39,13 +54,13 @@ function buildRegistry(): { registry: ProviderRegistry; defaultProviderId: strin
     } catch {
       continue
     }
-    registry.registerBuiltIn(providerId as Parameters<ProviderRegistry['registerBuiltIn']>[0], { apiKey })
+    registry.registerBuiltIn(providerId as Parameters<ProviderRegistry['registerBuiltIn']>[0], { apiKey, baseUrl: value?.base_url ?? (row.default_base_url as string | undefined) })
   }
 
   return {
     registry,
-    defaultProviderId: (row.default_provider as string) ?? 'openai',
-    defaultModel: (row.default_model as string) ?? 'gpt-4o',
+    defaultProviderId: (row.default_provider as string) ?? '',
+    defaultModel: (row.default_model as string) ?? '',
   }
 }
 
@@ -69,7 +84,7 @@ function buildNodeContext(nodeId: string): DeepDiveContext {
     nodeSummary: node.summary ?? '',
     nodeDomain: node.domain ?? '',
     aspects: nodeAspects.map((a) => ({
-      title: a.template_key,
+      title: a.title,
       content: (a.content as string) ?? '',
     })),
   }
@@ -106,7 +121,7 @@ export async function POST(
 
   // 保存用户消息
   const now = nowIso()
-  const userMessageId = generateId('dm')
+  const userMessageId = generateId('m')
   db.insert(deepDiveMessages)
     .values({
       id: userMessageId,
@@ -131,9 +146,10 @@ export async function POST(
       .run()
   }
 
-  // 构建对话历史
+  // 构建对话历史（带 agent 人格）
   const nodeContext = buildNodeContext(session.node_id)
-  const systemPrompt = buildDeepDiveSystemPrompt(nodeContext)
+  const agentType = (session.agent_type ?? 'direct') as DeepDiveAgentType
+  const systemPrompt = buildDeepDiveSystemPrompt(nodeContext, agentType)
 
   const allMessages = db
     .select()
@@ -151,7 +167,7 @@ export async function POST(
   ]
 
   // 流式调用 LLM
-  const aiMessageId = generateId('dm')
+  const aiMessageId = generateId('m')
   const encoder = new TextEncoder()
 
   const readableStream = new ReadableStream({

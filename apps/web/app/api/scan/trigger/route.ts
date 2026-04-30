@@ -30,7 +30,7 @@ export async function POST() {
     return NextResponse.json({ error: 'No default provider/model configured' }, { status: 400 })
   }
 
-  const credentials = (row.provider_credentials ?? {}) as Record<string, { api_key?: string }>
+  const credentials = (row.provider_credentials ?? {}) as Record<string, { api_key?: string; base_url?: string }>
   const providerCred = credentials[providerId]
   if (!providerCred?.api_key) {
     return NextResponse.json({ error: `No API key configured for provider: ${providerId}` }, { status: 400 })
@@ -45,7 +45,7 @@ export async function POST() {
 
   const registry = new ProviderRegistry()
   try {
-    registry.registerBuiltIn(providerId as Parameters<ProviderRegistry['registerBuiltIn']>[0], { apiKey })
+    registry.registerBuiltIn(providerId as Parameters<ProviderRegistry['registerBuiltIn']>[0], { apiKey, baseUrl: providerCred.base_url })
   } catch {
     return NextResponse.json({ error: `Unsupported provider: ${providerId}` }, { status: 400 })
   }
