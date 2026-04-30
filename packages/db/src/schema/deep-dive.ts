@@ -7,8 +7,8 @@ export const deepDiveSessions = sqliteTable(
   {
     id: text('id').primaryKey(),
     node_id: text('node_id')
-      .notNull()
       .references(() => nodes.id, { onDelete: 'cascade' }),
+    scope: text('scope', { enum: ['node', 'global'] }).notNull().default('node'),
     agent_type: text('agent_type', { enum: ['thinker', 'partner', 'direct'] }).notNull(),
     bridge_task_path: text('bridge_task_path'),
     status: text('status', { enum: ['active', 'completed', 'abandoned'] }).notNull().default('active'),
@@ -20,6 +20,7 @@ export const deepDiveSessions = sqliteTable(
   },
   (t) => ({
     nodeIdx: index('idx_deep_dive_node').on(t.node_id),
+    scopeIdx: index('idx_deep_dive_scope').on(t.scope),
   }),
 )
 
@@ -32,6 +33,8 @@ export const deepDiveMessages = sqliteTable(
       .references(() => deepDiveSessions.id, { onDelete: 'cascade' }),
     role: text('role', { enum: ['user', 'ai', 'system'] }).notNull(),
     content: text('content').notNull(),
+    tool_calls: text('tool_calls', { mode: 'json' }),
+    tool_results: text('tool_results', { mode: 'json' }),
     created_at: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
   },
   (t) => ({

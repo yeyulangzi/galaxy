@@ -6,9 +6,9 @@ export const suggestions = sqliteTable(
   {
     id: text('id').primaryKey(),
     type: text('type', {
-      enum: ['new_node', 'new_edge', 'fill_aspect', 'update_aspect', 'merge_nodes'],
+      enum: ['new_node', 'new_edge', 'fill_aspect', 'update_aspect', 'merge_nodes', 'update_node', 'delete_node', 'update_edge', 'delete_edge', 'delete_aspect', 'batch_update'],
     }).notNull(),
-    source: text('source', { enum: ['feed', 'proactive_scan', 'deepdive'] }).notNull(),
+    source: text('source', { enum: ['feed', 'proactive_scan', 'deepdive', 'chat'] }).notNull(),
     source_ref_id: text('source_ref_id'),
 
     payload: text('payload', { mode: 'json' }).notNull(),
@@ -30,6 +30,9 @@ export const suggestions = sqliteTable(
 
     provider_id: text('provider_id'),
     model: text('model'),
+
+    calibrated_confidence: real('calibrated_confidence'),
+    feedback_processed: integer('feedback_processed', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => ({
     statusIdx: index('idx_suggestions_status').on(t.status),
