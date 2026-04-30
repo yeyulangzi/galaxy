@@ -72,7 +72,7 @@ function getArgumentsSummary(
 ): string {
   switch (name) {
     case 'search_nodes':
-      return args.query ? `"${String(args.query)}"` : ''
+      return (args.keyword ?? args.query) ? `"${String(args.keyword ?? args.query)}"` : ''
     case 'get_node_detail':
     case 'list_node_edges':
       return args.node_id ? `#${String(args.node_id)}` : ''

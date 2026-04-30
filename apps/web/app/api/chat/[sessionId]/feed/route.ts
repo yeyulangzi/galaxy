@@ -180,6 +180,7 @@ export async function POST(
       data: {
         summaryPath: relativeSummaryPath,
         suggestionsCount: feedResult.suggestionsCreated,
+        aspectSuggestionsCount: feedResult.aspectSuggestionsCreated ?? 0,
       },
     })
   } catch (feedError: unknown) {

@@ -173,13 +173,19 @@ export async function POST(
           // 有 tool calls：记录并执行
           allToolCalls.push(...response.toolCalls)
 
-          sendEvent({
-            type: 'tool_start',
-            calls: response.toolCalls.map((tc) => ({
-              name: tc.name,
+          // 逐条发送 tool_start 事件，每个带唯一 toolCallId
+          const toolCallIds = response.toolCalls.map(
+            (_, idx) => `tc_${Date.now()}_${idx}`,
+          )
+          for (let i = 0; i < response.toolCalls.length; i++) {
+            const tc = response.toolCalls[i]!
+            sendEvent({
+              type: 'tool_start',
+              toolCallId: toolCallIds[i],
+              toolName: tc.name,
               arguments: tc.arguments,
-            })),
-          })
+            })
+          }
 
           const execResults = await Promise.all(
             response.toolCalls.map((tc) =>
@@ -187,21 +193,19 @@ export async function POST(
             ),
           )
 
-          // 统计 write tool 产生的 suggestions
-          for (const execResult of execResults) {
+          // 逐条发送 tool_done 事件 + 统计 write tool 产生的 suggestions
+          for (let i = 0; i < execResults.length; i++) {
+            const execResult = execResults[i]!
             if (execResult.isWrite && execResult.suggestionId) {
               suggestionsCreated++
             }
+            sendEvent({
+              type: 'tool_done',
+              toolCallId: toolCallIds[i],
+              result: execResult.result,
+              isWrite: execResult.isWrite,
+            })
           }
-
-          sendEvent({
-            type: 'tool_done',
-            results: execResults.map((r) => ({
-              name: r.name,
-              result: r.result,
-              isWrite: r.isWrite,
-            })),
-          })
 
           // 追加 assistant 消息
           llmMessages.push({
@@ -241,11 +245,8 @@ export async function POST(
 
         sendEvent({
           type: 'done',
-          message: {
-            id: aiMessageId,
-            content: finalContent,
-            toolCalls: allToolCalls,
-          },
+          content: finalContent,
+          messageId: aiMessageId,
           suggestionsCreated,
         })
       } catch (error) {
