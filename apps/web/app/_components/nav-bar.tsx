@@ -2,14 +2,21 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect } from 'react'
-import { Inbox, Settings, Network } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Inbox, Settings, Network, MessageCircle } from 'lucide-react'
 import { useInboxStore } from '@/lib/store/inbox-store'
+import dynamic from 'next/dynamic'
 import { cn } from '@/lib/utils'
+
+const GlobalChatDialog = dynamic(
+  () => import('./global-chat-dialog').then((m) => m.GlobalChatDialog),
+  { ssr: false },
+)
 
 export function NavBar() {
   const pathname = usePathname()
   const { total, loadInbox } = useInboxStore()
+  const [chatOpen, setChatOpen] = useState(false)
 
   useEffect(() => {
     loadInbox({ status: 'pending', limit: '1' })
@@ -22,17 +29,17 @@ export function NavBar() {
   ]
 
   return (
-    <header className="sticky top-0 z-40 flex h-12 items-center justify-between clay-surface shadow-clay-sm px-5">
-      <div className="flex items-center gap-6">
+    <header className="sticky top-0 z-40 flex h-[64px] items-center justify-between clay-surface px-6">
+      <div className="flex items-center gap-8">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2">
-          <span className="font-['Noto_Serif_Display'] text-base font-semibold tracking-tight text-foreground">
+          <span className="text-[28px] tracking-[-0.5px]" style={{ color: 'var(--clay-ink)', fontFamily: "'Cormorant Garamond', 'EB Garamond', serif", fontWeight: 400 }}>
             Galaxy
           </span>
         </Link>
 
         {/* Nav */}
-        <nav className="flex items-center gap-0.5">
+        <nav className="flex items-center gap-1">
           {navItems.map((item) => {
             const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
             return (
@@ -40,18 +47,16 @@ export function NavBar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'relative flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px] font-medium transition-all duration-200',
-                  'text-muted-foreground hover:text-foreground hover:bg-accent/60',
-                  isActive && 'text-foreground',
+                  'relative flex items-center gap-2 px-4 py-2.5 text-[15px] font-medium transition-all duration-200',
+                  isActive
+                    ? 'text-[var(--clay-ink)] bg-[var(--clay-surface-card)] rounded-[var(--radius-md)]'
+                    : 'text-[var(--clay-muted)] hover:text-[var(--clay-ink)]',
                 )}
               >
-                <item.icon className="h-3.5 w-3.5" />
+                <item.icon className="h-[18px] w-[18px]" />
                 {item.label}
-                {isActive && (
-                  <span className="absolute -bottom-[7px] left-3 right-3 h-[2px] rounded-full bg-[hsl(var(--primary))]" />
-                )}
                 {item.badge && item.badge > 0 ? (
-                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[hsl(var(--primary))] px-1 text-[10px] font-semibold text-[hsl(var(--primary-foreground))]">
+                  <span className="ml-1 inline-flex h-[20px] min-w-[20px] items-center justify-center rounded-full px-1 text-[12px] font-semibold" style={{ background: 'var(--clay-coral)', color: 'var(--clay-on-primary)' }}>
                     {item.badge > 99 ? '99+' : item.badge}
                   </span>
                 ) : null}
@@ -60,6 +65,14 @@ export function NavBar() {
           })}
         </nav>
       </div>
+      <button
+        onClick={() => setChatOpen(true)}
+        className="flex items-center gap-2 px-4 py-2.5 text-[15px] font-medium transition-all duration-200 text-[var(--clay-muted)] hover:text-[var(--clay-ink)]"
+      >
+        <MessageCircle className="h-[18px] w-[18px]" />
+        AI 对话
+      </button>
+      <GlobalChatDialog open={chatOpen} onOpenChange={setChatOpen} />
     </header>
   )
 }
