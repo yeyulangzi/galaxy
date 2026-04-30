@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@galaxy/db'
-import { chatSessions, chatMessages, settings } from '@galaxy/db/schema'
+import { deepDiveSessions, deepDiveMessages, settings } from '@galaxy/db/schema'
 import { eq } from 'drizzle-orm'
 import { generateId, nowIso } from '@galaxy/shared'
 import {
@@ -85,8 +85,8 @@ export async function POST(
   // 1. 验证 session 存在
   const session = db
     .select()
-    .from(chatSessions)
-    .where(eq(chatSessions.id, sessionId))
+    .from(deepDiveSessions)
+    .where(eq(deepDiveSessions.id, sessionId))
     .get()
 
   if (!session) {
@@ -96,7 +96,7 @@ export async function POST(
   // 2. 保存用户消息到 DB
   const now = nowIso()
   const userMessageId = generateId('m')
-  db.insert(chatMessages)
+  db.insert(deepDiveMessages)
     .values({
       id: userMessageId,
       session_id: sessionId,
@@ -113,9 +113,9 @@ export async function POST(
   const provider = registry.getOrThrow(providerId)
 
   if (!(session as Record<string, unknown>).provider_id || !(session as Record<string, unknown>).model) {
-    db.update(chatSessions)
+    db.update(deepDiveSessions)
       .set({ provider_id: providerId, model, updated_at: nowIso() })
-      .where(eq(chatSessions.id, sessionId))
+      .where(eq(deepDiveSessions.id, sessionId))
       .run()
   }
 
@@ -124,9 +124,9 @@ export async function POST(
   // 4. 加载消息历史
   const allMessages = db
     .select()
-    .from(chatMessages)
-    .where(eq(chatMessages.session_id, sessionId))
-    .orderBy(chatMessages.created_at)
+    .from(deepDiveMessages)
+    .where(eq(deepDiveMessages.session_id, sessionId))
+    .orderBy(deepDiveMessages.created_at)
     .all()
 
   const llmMessages: Message[] = [
@@ -222,7 +222,7 @@ export async function POST(
 
         // 7. 保存 AI 消息到 DB
         const aiCreatedAt = nowIso()
-        db.insert(chatMessages)
+        db.insert(deepDiveMessages)
           .values({
             id: aiMessageId,
             session_id: sessionId,
@@ -234,9 +234,9 @@ export async function POST(
           .run()
 
         // 更新 session 时间戳
-        db.update(chatSessions)
+        db.update(deepDiveSessions)
           .set({ updated_at: aiCreatedAt })
-          .where(eq(chatSessions.id, sessionId))
+          .where(eq(deepDiveSessions.id, sessionId))
           .run()
 
         sendEvent({

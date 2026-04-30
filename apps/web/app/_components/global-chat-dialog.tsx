@@ -236,7 +236,7 @@ export function GlobalChatDialog({ open, onOpenChange }: GlobalChatDialogProps) 
         setSessionId(newId)
       }
 
-      const response = await fetch(`/api/chat/${currentSessionId}/messages`, {
+      const response = await fetch(`/api/chat/${currentSessionId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: trimmed }),
