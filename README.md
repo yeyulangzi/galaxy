@@ -45,17 +45,27 @@ galaxy/
 ## 快速开始
 
 ```bash
-# 1. 安装依赖
+# 1. 克隆仓库
+git clone https://github.com/yeyulangzi/galaxy.git
+cd galaxy
+
+# 2. 安装依赖
 pnpm install
 
-# 2. 生成数据库迁移（首次或 schema 变更后）
+# 3. 生成数据库（首次或 schema 变更后）
 pnpm db:generate
 
-# 3. 启动开发服务器（自动初始化 DB + 启动 Next.js）
+# 4. 启动开发服务器（自动初始化 DB + 启动 Next.js）
 pnpm dev
 ```
 
 打开 http://localhost:3000 。
+
+### 配置 AI 能力（可选）
+
+图谱的手动 CRUD 不需要任何配置即可使用。如需启用 AI 能力（内容投喂、Deep Dive 对话、主动扫描等），请在启动后访问 Settings 页面，配置至少一个 LLM Provider 的 API Key。
+
+支持的 Provider：OpenAI / Anthropic / 阿里云百炼 / 火山引擎 / DeepSeek
 
 ## 常用命令
 
