@@ -13,9 +13,10 @@ interface GraphState {
   selectNode: (id: string | null) => void
   addNode: (input: Parameters<typeof api.createNode>[0]) => Promise<Node>
   patchNode: (id: string, input: Parameters<typeof api.updateNode>[1]) => Promise<void>
-  removeNode: (id: string) => Promise<void>
+  removeNode: (id: string) => Promise<string>
   addEdge: (input: Parameters<typeof api.createEdge>[0]) => Promise<Edge>
   removeEdge: (id: string) => Promise<void>
+  confirmNodeEdges: (nodeId: string) => Promise<number>
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
@@ -52,12 +53,13 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   },
 
   async removeNode(id) {
-    await api.deleteNode(id)
+    const result = await api.deleteNode(id)
     set({
       nodes: get().nodes.filter((n) => n.id !== id),
       edges: get().edges.filter((e) => e.source_node_id !== id && e.target_node_id !== id),
       selectedNodeId: get().selectedNodeId === id ? null : get().selectedNodeId,
     })
+    return result.operation_log_id
   },
 
   async addEdge(input) {
@@ -69,5 +71,17 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   async removeEdge(id) {
     await api.deleteEdge(id)
     set({ edges: get().edges.filter((e) => e.id !== id) })
+  },
+
+  async confirmNodeEdges(nodeId) {
+    const result = await api.confirmNodeEdges(nodeId)
+    // 将本地边的 origin 从 ai_suggested 更新为 manual
+    const confirmedSet = new Set(result.edgeIds ?? [])
+    set({
+      edges: get().edges.map((e) =>
+        confirmedSet.has(e.id) ? { ...e, origin: 'manual' } : e,
+      ),
+    })
+    return result.confirmed
   },
 }))

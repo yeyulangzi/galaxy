@@ -1,121 +1,159 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@galaxy/db'
-import { aspects } from '@galaxy/db/schema'
-import { generateId } from '@galaxy/shared'
+import { aspects, operationLogs } from '@galaxy/db/schema'
+import { generateId, nowIso } from '@galaxy/shared'
 import { loadAspectTemplates } from '@galaxy/ai'
 import { ensureDb } from '@/lib/api/ensure-db'
-import { eq, and } from 'drizzle-orm'
-import { UpdateAspectSchema } from '@/lib/api/schemas'
-import path from 'node:path'
-import fs from 'node:fs'
+import { eq, desc } from 'drizzle-orm'
+import { CreateAspectSchema, UpdateAspectSchema } from '@/lib/api/schemas'
+import { resolveDataDir } from '@/lib/api/build-registry'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * 定位 data/aspects 模板目录。
- * 兼容 monorepo 根目录和 apps/web 两种 cwd 场景。
- */
-function findAspectsTemplatesDir(): string {
-  const candidates = [
-    path.resolve(process.cwd(), 'data', 'aspects'),
-    path.resolve(process.cwd(), '..', '..', 'data', 'aspects'),
-  ]
-  for (const dir of candidates) {
-    if (fs.existsSync(dir)) return dir
-  }
-  throw new Error(`Cannot find aspects templates folder. Tried: ${candidates.join(', ')}`)
-}
-
-/**
  * GET /api/nodes/[id]/aspects
- * 获取节点的所有视角：DB 中已有的记录 + 模板默认值合并。
+ * 获取节点的所有动态维度卡。
  */
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   ensureDb()
   const db = getDb()
-  const nodeId = params.id
-
-  const existingAspects = db.select().from(aspects).where(eq(aspects.node_id, nodeId)).all()
-
-  const templates = loadAspectTemplates(findAspectsTemplatesDir())
-
-  const existingByKey = new Map(existingAspects.map((a) => [a.template_key, a]))
-
-  const merged = templates.map((template) => {
-    const existing = existingByKey.get(template.key)
-    if (existing) {
-      return existing
-    }
-    return {
-      id: null,
-      node_id: nodeId,
-      template_key: template.key,
-      title: template.title,
-      content: template.defaultContent,
-      order: template.order,
-      created_at: null,
-      updated_at: null,
-      created_by: null,
-      ai_metadata: null,
-    }
-  })
-
-  return NextResponse.json({ data: merged })
+  const rows = db
+    .select()
+    .from(aspects)
+    .where(eq(aspects.node_id, params.id))
+    .orderBy(aspects.order)
+    .all()
+  return NextResponse.json({ data: rows })
 }
 
 /**
  * POST /api/nodes/[id]/aspects
- * 创建或更新视角内容（upsert by node_id + template_key）。
+ * 创建新的动态维度卡。
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   ensureDb()
   const body = await req.json().catch(() => ({}))
-  const parsed = UpdateAspectSchema.safeParse(body)
+  const parsed = CreateAspectSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
   const db = getDb()
-  const nodeId = params.id
-  const { templateKey, content } = parsed.data
-
-  const templates = loadAspectTemplates(findAspectsTemplatesDir())
-  const template = templates.find((t) => t.key === templateKey)
-  if (!template) {
-    return NextResponse.json({ error: `Unknown template key: ${templateKey}` }, { status: 400 })
-  }
-
-  const existing = db
-    .select()
-    .from(aspects)
-    .where(and(eq(aspects.node_id, nodeId), eq(aspects.template_key, templateKey)))
-    .get()
-
-  if (existing) {
-    db.update(aspects)
-      .set({
-        content,
-        updated_at: new Date().toISOString(),
-      })
-      .where(eq(aspects.id, existing.id))
-      .run()
-
-    const updated = db.select().from(aspects).where(eq(aspects.id, existing.id)).get()
-    return NextResponse.json({ data: updated })
-  }
-
   const id = generateId('a')
+
+  // 计算下一个 order 值
+  const lastAspect = db
+    .select({ order: aspects.order })
+    .from(aspects)
+    .where(eq(aspects.node_id, params.id))
+    .orderBy(desc(aspects.order))
+    .get()
+  const nextOrder = (lastAspect?.order ?? -1) + 1
+
+  const aspectTemplatesDir = resolveDataDir('aspects')
+  const aspectTemplates = loadAspectTemplates(aspectTemplatesDir)
+  const matchedTemplate = aspectTemplates.find((t) => t.title === parsed.data.title)
+
   db.insert(aspects)
     .values({
       id,
-      node_id: nodeId,
-      template_key: templateKey,
-      title: template.title,
-      content,
-      order: template.order,
+      node_id: params.id,
+      template_key: matchedTemplate?.key ?? parsed.data.title.toLowerCase().replace(/\s+/g, '-'),
+      title: parsed.data.title,
+      content: parsed.data.content,
+      source_type: parsed.data.source_type ?? 'manual',
+      source_id: parsed.data.source_id ?? null,
+      order: nextOrder,
     })
     .run()
 
   const row = db.select().from(aspects).where(eq(aspects.id, id)).get()
+
+  db.insert(operationLogs)
+    .values({
+      id: generateId('ol'),
+      operation: 'create_aspect',
+      affected_ids: JSON.stringify([id]),
+      payload_snapshot: null,
+      user_note: `创建切面「${parsed.data.title}」`,
+      created_at: nowIso(),
+    })
+    .run()
+
   return NextResponse.json({ data: row }, { status: 201 })
+}
+
+/**
+ * PATCH /api/nodes/[id]/aspects
+ * 更新已有的维度卡（body 中需包含 aspectId）。
+ */
+export async function PATCH(req: NextRequest) {
+  ensureDb()
+  const body = await req.json().catch(() => ({}))
+  const { aspectId, ...rest } = body
+  if (!aspectId) {
+    return NextResponse.json({ error: 'aspectId is required' }, { status: 400 })
+  }
+
+  const parsed = UpdateAspectSchema.safeParse(rest)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+  }
+
+  const db = getDb()
+  const existing = db.select().from(aspects).where(eq(aspects.id, aspectId)).get()
+  if (!existing) return NextResponse.json({ error: 'aspect not found' }, { status: 404 })
+
+  db.update(aspects)
+    .set({
+      ...parsed.data,
+      updated_at: new Date().toISOString(),
+    })
+    .where(eq(aspects.id, aspectId))
+    .run()
+
+  const row = db.select().from(aspects).where(eq(aspects.id, aspectId)).get()
+
+  db.insert(operationLogs)
+    .values({
+      id: generateId('ol'),
+      operation: 'update_aspect',
+      affected_ids: JSON.stringify([aspectId]),
+      payload_snapshot: null,
+      user_note: `更新切面「${existing.title}」`,
+      created_at: nowIso(),
+    })
+    .run()
+
+  return NextResponse.json({ data: row })
+}
+
+/**
+ * DELETE /api/nodes/[id]/aspects?aspectId=xxx
+ * 删除维度卡。
+ */
+export async function DELETE(req: NextRequest) {
+  ensureDb()
+  const db = getDb()
+  const url = new URL(req.url)
+  const aspectId = url.searchParams.get('aspectId')
+  if (!aspectId) return NextResponse.json({ error: 'aspectId required' }, { status: 400 })
+
+  const existing = db.select().from(aspects).where(eq(aspects.id, aspectId)).get()
+  if (!existing) return NextResponse.json({ error: 'aspect not found' }, { status: 404 })
+
+  const logId = generateId('ol')
+  db.insert(operationLogs)
+    .values({
+      id: logId,
+      operation: 'confirm_delete_aspect',
+      affected_ids: JSON.stringify([aspectId]),
+      payload_snapshot: JSON.stringify({ aspect: existing }),
+      user_note: `删除切面「${existing.title}」`,
+      created_at: nowIso(),
+    })
+    .run()
+
+  db.delete(aspects).where(eq(aspects.id, aspectId)).run()
+  return NextResponse.json({ data: { id: aspectId, operation_log_id: logId } })
 }

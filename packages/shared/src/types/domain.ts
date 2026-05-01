@@ -32,8 +32,35 @@ export const RELATION_TYPES = [
   'instance_of',
   'evolved_from',
   'cites',
+  'evidence_for',
+  'evidence_against',
+  'refines',
 ] as const
 export type RelationType = (typeof RELATION_TYPES)[number]
+
+/** 节点类型（与 nodes.node_type 列字面一致） */
+export const NODE_TYPES = ['concept', 'model', 'methodology', 'phenomenon', 'practice', 'phase', 'entity'] as const
+export type NodeType = (typeof NODE_TYPES)[number]
+
+/** 通道类型（与 nodes.channel 列字面一致） */
+export const CHANNELS = ['core', 'light'] as const
+export type Channel = (typeof CHANNELS)[number]
+
+/** 内化状态（与 nodes.internalization_status 列字面一致） */
+export const INTERNALIZATION_STATUSES = ['draft', 'linked', 'dialogued', 'mastered'] as const
+export type InternalizationStatus = (typeof INTERNALIZATION_STATUSES)[number]
+
+/** 边的来源（与 edges.origin 列字面一致） */
+export const EDGE_ORIGINS = ['manual', 'ai_suggested', 'ai_confirmed'] as const
+export type EdgeOrigin = (typeof EDGE_ORIGINS)[number]
+
+/** 维度卡来源类型（与 aspects.source_type 列字面一致） */
+export const ASPECT_SOURCE_TYPES = ['dialogue', 'attachment', 'manual'] as const
+export type AspectSourceType = (typeof ASPECT_SOURCE_TYPES)[number]
+
+/** 附件类型（与 node_attachments.type 列字面一致） */
+export const ATTACHMENT_TYPES = ['md', 'link'] as const
+export type AttachmentType = (typeof ATTACHMENT_TYPES)[number]
 
 /** AI 调用的状态（M2 ai_call_logs 表会引用此类型） */
 export const AI_CALL_STATUSES = ['success', 'failed', 'timeout'] as const
@@ -68,6 +95,11 @@ export interface Node {
   domain: string | null
   is_seed: boolean
   status: NodeStatus
+  node_type: NodeType
+  channel: Channel
+  internalization_status: InternalizationStatus
+  my_thoughts: string | null
+  last_accessed_at: string | null
   created_at: string
   updated_at: string
   created_by: Author
@@ -82,6 +114,7 @@ export interface Edge {
   source_node_id: string
   target_node_id: string
   relation_type: RelationType
+  origin: EdgeOrigin
   weight: number
   description: string | null
   created_at: string
@@ -96,14 +129,38 @@ export interface Edge {
 export interface Aspect {
   id: string
   node_id: string
-  template_key: string
   title: string
   content: string
+  source_type: AspectSourceType
+  source_id: string | null
   order: number
   created_at: string
   updated_at: string
   created_by: Author
   ai_metadata: unknown | null
+}
+
+/**
+ * 「我的思考」版本 —— `node_thought_versions` 表的镜像。
+ */
+export interface ThoughtVersion {
+  id: string
+  node_id: string
+  content: string
+  version_label: string | null
+  saved_at: string
+}
+
+/**
+ * 节点附件 —— `node_attachments` 表的镜像。
+ */
+export interface Attachment {
+  id: string
+  node_id: string
+  type: AttachmentType
+  title: string
+  content_or_url: string
+  created_at: string
 }
 
 /** 建议类型 */
@@ -133,6 +190,7 @@ export interface Suggestion {
   payload: unknown
   rationale: string | null
   confidence: number
+  calibrated_confidence: number | null
   status: SuggestionStatus
   decided_at: string | null
   decided_payload: unknown | null

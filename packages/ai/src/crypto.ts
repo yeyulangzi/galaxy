@@ -46,7 +46,7 @@ export function decrypt(encrypted: string): string {
   }
 
   try {
-    const [ivBase64, tagBase64, ciphertextBase64] = parts
+    const [ivBase64, tagBase64, ciphertextBase64] = parts as [string, string, string]
     const key = getEncryptionKey()
     const iv = Buffer.from(ivBase64, 'base64')
     const authTag = Buffer.from(tagBase64, 'base64')

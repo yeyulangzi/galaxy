@@ -2,95 +2,329 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&family=Noto+Serif+Display:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap');
 
 @layer base {
   :root {
     /*
-     * Galaxy — Clay / Claymorphism dark palette
-     * Warm stone-gray with soft rounded 3D feel.
-     * Accent: terracotta / burnt sienna for warmth.
+     * Galaxy — Clay Design System
+     * Cream-tinted canvas with dark-navy CTAs.
+     * Saturated single-color feature cards.
      */
-    --background: 30 8% 12%;
-    --foreground: 40 12% 84%;
-    --card: 30 7% 15%;
-    --card-foreground: 40 12% 84%;
-    --popover: 30 7% 16%;
-    --popover-foreground: 40 12% 84%;
-    --muted: 30 6% 20%;
-    --muted-foreground: 35 8% 52%;
-    --primary: 18 70% 55%;
-    --primary-foreground: 30 8% 12%;
-    --secondary: 30 6% 20%;
-    --secondary-foreground: 40 12% 84%;
-    --accent: 30 8% 22%;
-    --accent-foreground: 40 12% 84%;
-    --destructive: 0 55% 48%;
-    --destructive-foreground: 0 0% 98%;
-    --success: 155 50% 42%;
-    --success-foreground: 0 0% 98%;
-    --border: 30 6% 22%;
-    --input: 30 6% 22%;
-    --ring: 18 70% 55%;
-    --radius: 1rem;
 
-    /* Domain colors for graph nodes */
-    --node-default: 30 6% 50%;
-    --node-a: 18 70% 55%;
-    --node-b: 195 55% 48%;
-    --node-c: 155 50% 42%;
-    --node-d: 270 35% 55%;
-    --node-e: 45 65% 52%;
-    --node-f: 330 45% 52%;
+    /* Core palette — aligned to DESIGN.md */
+    --clay-canvas: #faf9f5;
+    --clay-primary: #cc785c;
+    --clay-primary-active: #a9583e;
+    --clay-primary-disabled: #e6dfd8;
+    --clay-ink: #141413;
+    --clay-body: #3d3d3a;
+    --clay-body-strong: #252523;
+    --clay-muted: #6c6a64;
+    --clay-muted-soft: #8e8b82;
+    --clay-hairline: #e6dfd8;
+    --clay-hairline-soft: #ebe6df;
+    --clay-surface-soft: #f5f0e8;
+    --clay-surface-card: #efe9de;
+    --clay-surface-strong: #e8e0d2;
+    --clay-surface-dark: #181715;
+    --clay-surface-dark-elevated: #252320;
+    --clay-surface-dark-soft: #1f1e1b;
+    --clay-on-primary: #ffffff;
+    --clay-on-dark: #faf9f5;
+    --clay-on-dark-soft: #a09d96;
+
+    /* Brand accent palette */
+    --clay-accent-teal: #5db8a6;
+    --clay-accent-amber: #e8a55a;
+    --clay-teal: #5db8a6;
+    --clay-lavender: #b8a4ed;
+    --clay-peach: #ffb084;
+    --clay-ochre: #e8a55a;
+    --clay-mint: #a4d4c5;
+    --clay-coral: #cc785c;
+    --clay-pink: #ff4d8b;
+
+    /* Semantic */
+    --clay-success: #5db872;
+    --clay-warning: #d4a017;
+    --clay-error: #c64545;
+
+    /* Rounded — aligned to DESIGN.md */
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-pill: 9999px;
+
+    /* Spacing */
+    --space-xxs: 4px;
+    --space-xs: 8px;
+    --space-sm: 12px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-xxl: 48px;
+    --space-section: 96px;
+
+    /* shadcn/ui compatibility tokens — coral primary */
+    --background: 40 33% 97%;
+    --foreground: 60 3% 8%;
+    --card: 36 30% 90%;
+    --card-foreground: 60 3% 8%;
+    --popover: 40 33% 97%;
+    --popover-foreground: 60 3% 8%;
+    --muted: 36 18% 93%;
+    --muted-foreground: 40 5% 40%;
+    --primary: 18 50% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 36 30% 90%;
+    --secondary-foreground: 60 3% 8%;
+    --accent: 36 18% 93%;
+    --accent-foreground: 60 3% 8%;
+    --destructive: 0 56% 52%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 136 37% 54%;
+    --success-foreground: 0 0% 100%;
+    --border: 33 18% 88%;
+    --input: 33 18% 88%;
+    --ring: 18 50% 58%;
+    --radius: 8px;
+
+    /* Domain colors for graph nodes — warm Clay brand palette */
+    --node-default: var(--clay-muted);
+    --node-a: var(--clay-coral);
+    --node-b: var(--clay-teal);
+    --node-c: var(--clay-mint);
+    --node-d: var(--clay-lavender);
+    --node-e: var(--clay-ochre);
+    --node-f: var(--clay-pink);
   }
+
   * {
     @apply border-border;
   }
+
   body {
-    @apply bg-background text-foreground antialiased;
-    font-family: 'Figtree', system-ui, sans-serif;
+    @apply antialiased;
+    background-color: var(--clay-canvas);
+    color: var(--clay-body);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
   }
+
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted));
-    border-radius: 999px;
+    background: var(--clay-hairline);
+    border-radius: var(--radius-pill);
   }
-  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--clay-muted-soft); }
 }
 
 @layer components {
-  /* ─── Clay utility classes ─── */
+  /* ─── Clay card — warm cream with soft shadow ─── */
   .clay-card {
-    background: linear-gradient(145deg, hsl(var(--card)) 0%, hsl(30 7% 13%) 100%);
+    background: var(--clay-surface-card);
+    border: 1px solid var(--clay-hairline-soft);
+    border-radius: var(--radius-lg);
     box-shadow:
-      8px 8px 16px hsl(30 8% 8% / 0.4),
-      -4px -4px 12px hsl(30 8% 20% / 0.15),
-      inset 0 1px 0 hsl(30 8% 22% / 0.3);
-    border: 1px solid hsl(30 6% 20% / 0.5);
-    border-radius: 1rem;
+      0 1px 3px rgba(0, 0, 0, 0.04),
+      0 4px 12px rgba(0, 0, 0, 0.03);
   }
 
+  /* ─── Clay button — coral primary ─── */
   .clay-button {
-    background: linear-gradient(145deg, hsl(var(--primary)) 0%, hsl(18 65% 48%) 100%);
-    box-shadow:
-      4px 4px 8px hsl(30 8% 8% / 0.3),
-      -2px -2px 6px hsl(30 8% 20% / 0.1),
-      inset 0 1px 0 hsl(18 70% 65% / 0.3);
-    border-radius: 0.75rem;
+    background: var(--clay-primary);
+    color: var(--clay-on-primary);
+    border-radius: var(--radius-md);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    height: 40px;
+    padding: 12px 20px;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  .clay-button:hover {
+    background: var(--clay-primary-active);
+  }
+  .clay-button:active {
+    transform: scale(0.98);
   }
 
+  /* ─── Clay input ─── */
   .clay-input {
-    background: hsl(30 7% 13%);
-    box-shadow:
-      inset 2px 2px 4px hsl(30 8% 8% / 0.3),
-      inset -1px -1px 3px hsl(30 8% 20% / 0.1);
-    border-radius: 0.75rem;
+    background: var(--clay-canvas);
+    border: 1px solid var(--clay-hairline);
+    border-radius: var(--radius-md);
+    height: 40px;
+    padding: 10px 14px;
+    font-size: 16px;
+    color: var(--clay-ink);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .clay-input:focus {
+    border-color: var(--clay-primary);
+    box-shadow: 0 0 0 3px rgba(204, 120, 92, 0.15);
+    outline: none;
   }
 
+  /* ─── Clay surface ─── */
   .clay-surface {
-    backdrop-filter: blur(12px);
-    background: hsl(var(--background) / 0.85);
+    background: var(--clay-canvas);
+    border-bottom: 1px solid var(--clay-hairline-soft);
+  }
+
+  /* ─── Display typography — Cormorant Garamond serif (Copernicus substitute) ─── */
+  .text-display-xl {
+    font-family: 'Cormorant Garamond', 'EB Garamond', 'Garamond', 'Times New Roman', serif;
+    font-size: 64px;
+    font-weight: 400;
+    line-height: 1.05;
+    letter-spacing: -1.5px;
+    color: var(--clay-ink);
+  }
+  .text-display-lg {
+    font-family: 'Cormorant Garamond', 'EB Garamond', 'Garamond', 'Times New Roman', serif;
+    font-size: 48px;
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: -1px;
+    color: var(--clay-ink);
+  }
+  .text-display-md {
+    font-family: 'Cormorant Garamond', 'EB Garamond', 'Garamond', 'Times New Roman', serif;
+    font-size: 36px;
+    font-weight: 400;
+    line-height: 1.15;
+    letter-spacing: -0.5px;
+    color: var(--clay-ink);
+  }
+  .text-display-sm {
+    font-family: 'Cormorant Garamond', 'EB Garamond', 'Garamond', 'Times New Roman', serif;
+    font-size: 28px;
+    font-weight: 400;
+    line-height: 1.2;
+    letter-spacing: -0.3px;
+    color: var(--clay-ink);
+  }
+  .text-title-lg {
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--clay-ink);
+  }
+  .text-title-md {
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 18px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--clay-ink);
+  }
+  .text-title-sm {
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--clay-ink);
+  }
+  .text-body-md {
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.55;
+    color: var(--clay-body);
+  }
+  .text-body-sm {
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.55;
+    color: var(--clay-body);
+  }
+  .text-caption {
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--clay-muted);
+  }
+  .text-caption-upper {
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--clay-muted);
+  }
+  .text-code {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.6;
+  }
+
+  /* ─── Feature cards — cream surface with hairline ─── */
+  .clay-feature-card {
+    background: var(--clay-surface-card);
+    color: var(--clay-ink);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+  }
+  .clay-feature-dark {
+    background: var(--clay-surface-dark);
+    color: var(--clay-on-dark);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+  }
+  .clay-callout-coral {
+    background: var(--clay-primary);
+    color: var(--clay-on-primary);
+    border-radius: var(--radius-lg);
+    padding: 48px;
+  }
+
+  /* ─── Badge pill ─── */
+  .clay-badge {
+    background: var(--clay-surface-card);
+    color: var(--clay-ink);
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--radius-pill);
+    padding: 4px 12px;
+  }
+  .clay-badge-coral {
+    background: var(--clay-primary);
+    color: var(--clay-on-primary);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border-radius: var(--radius-pill);
+    padding: 4px 12px;
+  }
+
+  /* ─── Category tab ─── */
+  .clay-tab {
+    background: transparent;
+    color: var(--clay-muted);
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: var(--radius-md);
+    padding: 8px 14px;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .clay-tab:hover {
+    color: var(--clay-ink);
+  }
+  .clay-tab-active {
+    background: var(--clay-surface-card);
+    color: var(--clay-ink);
   }
 }
 

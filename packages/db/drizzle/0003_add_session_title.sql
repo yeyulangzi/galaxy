@@ -1,0 +1,1 @@
+ALTER TABLE deep_dive_sessions ADD `title` text;

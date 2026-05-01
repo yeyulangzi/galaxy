@@ -10,9 +10,9 @@ import type {
 } from './types'
 
 const ANTHROPIC_MODELS: ModelInfo[] = [
-  { id: 'claude-sonnet-4-5-20250514', displayName: 'Claude Sonnet 4.5', maxContextTokens: 200000, inputPricePer1kTokens: 0.003, outputPricePer1kTokens: 0.015 },
-  { id: 'claude-haiku-4-5-20250514', displayName: 'Claude Haiku 4.5', maxContextTokens: 200000, inputPricePer1kTokens: 0.0008, outputPricePer1kTokens: 0.004 },
-  { id: 'claude-opus-4-20250514', displayName: 'Claude Opus 4', maxContextTokens: 200000, inputPricePer1kTokens: 0.015, outputPricePer1kTokens: 0.075 },
+  { id: 'claude-sonnet-4-5-20250514', displayName: 'Claude Sonnet 4.5', maxContextTokens: 200000, maxOutputTokens: 16384, inputPricePer1kTokens: 0.003, outputPricePer1kTokens: 0.015 },
+  { id: 'claude-haiku-4-5-20250514', displayName: 'Claude Haiku 4.5', maxContextTokens: 200000, maxOutputTokens: 16384, inputPricePer1kTokens: 0.0008, outputPricePer1kTokens: 0.004 },
+  { id: 'claude-opus-4-20250514', displayName: 'Claude Opus 4', maxContextTokens: 200000, maxOutputTokens: 32768, inputPricePer1kTokens: 0.015, outputPricePer1kTokens: 0.075 },
 ]
 
 export class AnthropicProvider implements LLMProvider {
@@ -38,9 +38,11 @@ export class AnthropicProvider implements LLMProvider {
     const systemMessage = request.messages.find((m) => m.role === 'system')
     const nonSystemMessages = request.messages.filter((m) => m.role !== 'system')
 
+    const thinkingEnabled = request.thinking?.enabled ?? false
+
     const params: Anthropic.MessageCreateParamsNonStreaming = {
       model: request.model,
-      max_tokens: request.maxTokens ?? 4096,
+      max_tokens: request.maxTokens ?? (this.supportedModels.find((m) => m.id === request.model)?.maxOutputTokens ?? 16384),
       messages: nonSystemMessages.map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
@@ -51,7 +53,16 @@ export class AnthropicProvider implements LLMProvider {
       params.system = systemMessage.content
     }
 
-    if (request.temperature !== undefined) {
+    if (thinkingEnabled) {
+      // Anthropic extended thinking 要求 temperature=1，且需要更大的 max_tokens
+      params.temperature = 1
+      const budgetTokens = request.thinking!.budgetTokens ?? 10000
+      params.max_tokens = Math.max(params.max_tokens, budgetTokens + 4096)
+      ;(params as Record<string, unknown>).thinking = {
+        type: 'enabled',
+        budget_tokens: budgetTokens,
+      }
+    } else if (request.temperature !== undefined) {
       params.temperature = request.temperature
     }
 
@@ -94,16 +105,28 @@ export class AnthropicProvider implements LLMProvider {
   async *stream(request: LLMRequest): AsyncIterable<string> {
     const systemMessage = request.messages.find((m) => m.role === 'system')
     const nonSystemMessages = request.messages.filter((m) => m.role !== 'system')
-    const stream = this.client.messages.stream({
+    const thinkingEnabled = request.thinking?.enabled ?? false
+
+    const streamParams: Record<string, unknown> = {
       model: request.model,
-      max_tokens: request.maxTokens ?? 4096,
-      temperature: request.temperature ?? 0.7,
+      max_tokens: request.maxTokens ?? (this.supportedModels.find((m) => m.id === request.model)?.maxOutputTokens ?? 16384),
       system: systemMessage?.content,
       messages: nonSystemMessages.map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
       })),
-    })
+    }
+
+    if (thinkingEnabled) {
+      streamParams.temperature = 1
+      const budgetTokens = request.thinking!.budgetTokens ?? 10000
+      streamParams.max_tokens = Math.max(streamParams.max_tokens as number, budgetTokens + 4096)
+      streamParams.thinking = { type: 'enabled', budget_tokens: budgetTokens }
+    } else {
+      streamParams.temperature = request.temperature ?? 0.7
+    }
+
+    const stream = this.client.messages.stream(streamParams as Anthropic.MessageStreamParams)
     for await (const event of stream) {
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
         yield event.delta.text

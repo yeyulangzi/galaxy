@@ -10,6 +10,7 @@ export const deepDiveSessions = sqliteTable(
       .references(() => nodes.id, { onDelete: 'cascade' }),
     scope: text('scope', { enum: ['node', 'global'] }).notNull().default('node'),
     agent_type: text('agent_type', { enum: ['thinker', 'partner', 'direct'] }).notNull(),
+    title: text('title'),
     bridge_task_path: text('bridge_task_path'),
     status: text('status', { enum: ['active', 'completed', 'abandoned'] }).notNull().default('active'),
     created_at: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),

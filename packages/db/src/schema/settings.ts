@@ -28,6 +28,10 @@ export const settings = sqliteTable('settings', {
   qoder_bridge_dir: text('qoder_bridge_dir').default('~/galaxy/bridge/'),
   bridge_timeout_minutes: integer('bridge_timeout_minutes').notNull().default(30),
 
+  // 思考模式
+  enable_thinking: integer('enable_thinking', { mode: 'boolean' }).notNull().default(false),
+  thinking_budget_tokens: integer('thinking_budget_tokens').notNull().default(10000),
+
   // 风险控制
   enable_monthly_budget: integer('enable_monthly_budget', { mode: 'boolean' }).notNull().default(false),
   monthly_budget_usd: real('monthly_budget_usd').notNull().default(20),

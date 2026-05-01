@@ -3,66 +3,24 @@ import { getDb } from '@galaxy/db'
 import {
   deepDiveSessions,
   deepDiveMessages,
-  settings,
   nodes,
   aspects,
 } from '@galaxy/db/schema'
 import { eq } from 'drizzle-orm'
 import { generateId, nowIso } from '@galaxy/shared'
 import {
-  decrypt,
-  ProviderRegistry,
   buildDeepDiveSystemPrompt,
-  setAgentPromptPath,
   type DeepDiveContext,
   type DeepDiveAgentType,
 } from '@galaxy/ai'
 import { ensureDb } from '@/lib/api/ensure-db'
+import { buildRegistry, initAgentPrompts } from '@/lib/api/build-registry'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 120
 
-/**
- * 模块加载时把环境变量里的 agent prompt 文件路径注入到 @galaxy/ai。
- * 默认指向开发者本机 Qoder 工作区里的 .md 文件；生产/其他机器请通过环境变量覆盖。
- */
-const DEFAULT_THINKER_PROMPT_PATH =
-  process.env.GALAXY_AGENT_PROMPT_THINKER ??
-  '/Users/eleme/qoder/曹鹏的工作区/agents/thinker/system_prompt.md'
-const DEFAULT_PARTNER_PROMPT_PATH =
-  process.env.GALAXY_AGENT_PROMPT_PARTNER ?? '/Users/eleme/.qoder/agents/product-partner.md'
-
-setAgentPromptPath('thinker', DEFAULT_THINKER_PROMPT_PATH)
-setAgentPromptPath('partner', DEFAULT_PARTNER_PROMPT_PATH)
-
-/**
- * 从 settings 中读取并构建 ProviderRegistry，返回 registry 和默认 provider/model。
- */
-function buildRegistry(): { registry: ProviderRegistry; defaultProviderId: string; defaultModel: string } {
-  const db = getDb()
-  const row = db.select().from(settings).where(eq(settings.id, 1)).get()
-  if (!row) throw new Error('Settings not initialized')
-
-  const registry = new ProviderRegistry()
-  const creds = (row.provider_credentials ?? {}) as Record<string, { api_key?: string; base_url?: string }>
-
-  for (const [providerId, value] of Object.entries(creds)) {
-    const encryptedKey = value?.api_key ?? ''
-    if (!encryptedKey) continue
-    let apiKey: string
-    try {
-      apiKey = decrypt(encryptedKey)
-    } catch {
-      continue
-    }
-    registry.registerBuiltIn(providerId as Parameters<ProviderRegistry['registerBuiltIn']>[0], { apiKey, baseUrl: value?.base_url ?? (row.default_base_url as string | undefined) })
-  }
-
-  return {
-    registry,
-    defaultProviderId: (row.default_provider as string) ?? '',
-    defaultModel: (row.default_model as string) ?? '',
-  }
-}
+// 确保 agent prompt 路径在模块加载时初始化
+initAgentPrompts()
 
 /**
  * 构建节点的 DeepDiveContext。
@@ -99,7 +57,7 @@ export async function POST(
   const { sessionId } = params
 
   const body = await req.json().catch(() => ({}))
-  const { content } = body as { content?: string }
+  const { content, useThinking } = body as { content?: string; useThinking?: boolean }
 
   if (!content || typeof content !== 'string' || content.trim().length === 0) {
     return NextResponse.json({ error: 'content is required' }, { status: 400 })
@@ -133,15 +91,28 @@ export async function POST(
     .run()
 
   // 构建 provider
-  const { registry, defaultProviderId, defaultModel } = buildRegistry()
+  const { registry, defaultProviderId, defaultModel, thinking } = buildRegistry()
   const providerId = session.provider_id ?? defaultProviderId
   const model = session.model ?? defaultModel
   const provider = registry.getOrThrow(providerId)
 
-  // 记录 session 的 provider/model（首次消息时写入）
-  if (!session.provider_id || !session.model) {
+  // 记录 session 的 provider/model 和标题（首次消息时写入）
+  const needsProviderUpdate = !session.provider_id || !session.model
+  const needsTitleUpdate = !session.title
+  if (needsProviderUpdate || needsTitleUpdate) {
+    const updates: Record<string, unknown> = { updated_at: nowIso() }
+    if (needsProviderUpdate) {
+      updates.provider_id = providerId
+      updates.model = model
+    }
+    if (needsTitleUpdate) {
+      const trimmedContent = content.trim()
+      updates.title = trimmedContent.length > 30
+        ? trimmedContent.slice(0, 30) + '…'
+        : trimmedContent
+    }
     db.update(deepDiveSessions)
-      .set({ provider_id: providerId, model, updated_at: nowIso() })
+      .set(updates)
       .where(eq(deepDiveSessions.id, sessionId))
       .run()
   }
@@ -177,8 +148,9 @@ export async function POST(
         const chunks = provider.stream({
           model,
           messages: llmMessages,
-          maxTokens: 4096,
+          /* maxTokens 由 provider 根据模型的 maxOutputTokens 自动设置 */
           temperature: 0.7,
+          thinking: thinking.enabled && useThinking !== false ? thinking : undefined,
         })
 
         for await (const chunk of chunks) {

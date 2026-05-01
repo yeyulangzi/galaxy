@@ -13,8 +13,16 @@ export const edges = sqliteTable(
       .notNull()
       .references(() => nodes.id, { onDelete: 'cascade' }),
     relation_type: text('relation_type', {
-      enum: ['contains', 'related', 'opposes', 'instance_of', 'evolved_from', 'cites'],
+      enum: [
+        'contains', 'related', 'opposes', 'instance_of', 'evolved_from', 'cites',
+        'evidence_for', 'evidence_against', 'refines',
+      ],
     }).notNull(),
+    origin: text('origin', {
+      enum: ['manual', 'ai_suggested', 'ai_confirmed'],
+    })
+      .notNull()
+      .default('manual'),
     weight: real('weight').notNull().default(1.0),
     description: text('description'),
     created_at: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),

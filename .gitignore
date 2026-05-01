@@ -23,3 +23,6 @@ dist/
 
 # test
 coverage/
+
+# AI-generated dev docs (contain local paths, not for public)
+docs/superpowers/

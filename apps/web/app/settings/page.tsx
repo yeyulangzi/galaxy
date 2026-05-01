@@ -1,14 +1,17 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
-import { Eye, EyeOff, Loader2, Zap, AlertTriangle, Shield, Download, Database, Radar, Play } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Zap, AlertTriangle, Shield, Download, Upload, Database, Radar, Play, User, Brain, Bot, Plus, Pencil, Trash2, Save, X, Radio, FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useSettingsStore } from '@/lib/store/settings-store'
 import { api } from '@/lib/api/client'
 import { NavBar } from '../_components/nav-bar'
+import { SafetyPanel } from '../_components/safety-panel'
+import { BridgeMonitor } from '../_components/bridge-monitor'
+import { OperationLogViewer } from '../_components/operation-log-viewer'
 
 /** 支持的 Provider 定义 */
 const PROVIDERS = [
@@ -34,6 +37,12 @@ export default function SettingsPage() {
   const [defaultProvider, setDefaultProvider] = useState('')
   const [defaultModel, setDefaultModel] = useState('')
   const [defaultBaseUrl, setDefaultBaseUrl] = useState('')
+  const [enableThinking, setEnableThinking] = useState(false)
+  const [thinkingBudgetTokens, setThinkingBudgetTokens] = useState(10000)
+  const [rebuilding, setRebuilding] = useState(false)
+  const [rebuildStatus, setRebuildStatus] = useState('')
+  const [bridgeDir, setBridgeDir] = useState('')
+  const [bridgeTimeout, setBridgeTimeout] = useState(30)
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
   const [baseUrls, setBaseUrls] = useState<Record<string, string>>({})
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({})
@@ -49,6 +58,9 @@ export default function SettingsPage() {
   const [backingUp, setBackingUp] = useState(false)
   const [killingAI, setKillingAI] = useState(false)
   const [aiKilled, setAiKilled] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [logViewerOpen, setLogViewerOpen] = useState(false)
+  const importFileRef = useRef<HTMLInputElement>(null)
 
   // 主动扫描相关状态
   const [scanCron, setScanCron] = useState('0 3 * * *')
@@ -60,20 +72,39 @@ export default function SettingsPage() {
   }>>([])
   const [triggeringScan, setTriggeringScan] = useState(false)
 
+  // --- Memory & Agents ---
+  const [userProfile, setUserProfile] = useState('')
+  const [globalMemory, setGlobalMemory] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [memorySaving, setMemorySaving] = useState(false)
+  const [agents, setAgents] = useState<Array<{ id: string; name: string; description: string }>>([])
+  const [editingAgent, setEditingAgent] = useState<string | null>(null)
+  const [agentContent, setAgentContent] = useState('')
+  const [agentSaving, setAgentSaving] = useState(false)
+  const [showNewAgent, setShowNewAgent] = useState(false)
+  const [newAgentId, setNewAgentId] = useState('')
+  const [newAgentContent, setNewAgentContent] = useState('')
+
   useEffect(() => { loadSettings() }, [loadSettings])
   useEffect(() => {
     api.getCostStats().then(setCostStats).catch(() => {})
     api.getRiskData().then(setRiskData).catch(() => {})
     api.getScanStatus().then(setScanRuns).catch(() => {})
-  }, [])
+    loadMemory()
+    loadAgents()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (settings) {
       setDefaultProvider((settings.default_provider as string) ?? '')
       setDefaultModel((settings.default_model as string) ?? '')
       setDefaultBaseUrl((settings.default_base_url as string) ?? '')
+      setEnableThinking((settings.enable_thinking as boolean) ?? false)
+      setThinkingBudgetTokens((settings.thinking_budget_tokens as number) ?? 10000)
       setScanCron((settings.proactive_scan_cron as string) ?? '0 3 * * *')
       setScanMaxSuggestions((settings.proactive_scan_max_suggestions as number) ?? 10)
       setScanStrategies((settings.proactive_scan_strategies as string[]) ?? ['islands', 'gaps'])
+      setBridgeDir((settings.qoder_bridge_dir as string) ?? '~/galaxy/bridge/')
+      setBridgeTimeout((settings.bridge_timeout_minutes as number) ?? 30)
     }
   }, [settings])
 
@@ -170,12 +201,110 @@ export default function SettingsPage() {
     }
   }, [])
 
+  const loadMemory = useCallback(async () => {
+    try {
+      const [profileData, memoryData] = await Promise.all([
+        fetch('/api/memory?type=profile').then(r => r.json()),
+        fetch('/api/memory?type=global').then(r => r.json()),
+      ])
+      if (profileData?.data?.content) setUserProfile(profileData.data.content)
+      if (memoryData?.data?.content) setGlobalMemory(memoryData.data.content)
+    } catch { /* 静默 */ }
+  }, [])
+
+  const loadAgents = useCallback(async () => {
+    try {
+      const res = await fetch('/api/agents').then(r => r.json())
+      if (res?.data?.agents) setAgents(res.data.agents)
+    } catch { /* 静默 */ }
+  }, [])
+
+  const saveProfile = useCallback(async () => {
+    setProfileSaving(true)
+    try {
+      await fetch('/api/memory', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'profile', content: userProfile }),
+      })
+      toast.success('个人档案已保存')
+    } catch { toast.error('保存失败') }
+    finally { setProfileSaving(false) }
+  }, [userProfile])
+
+  const saveGlobalMemory = useCallback(async () => {
+    setMemorySaving(true)
+    try {
+      await fetch('/api/memory', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'global', content: globalMemory }),
+      })
+      toast.success('全局记忆已保存')
+    } catch { toast.error('保存失败') }
+    finally { setMemorySaving(false) }
+  }, [globalMemory])
+
+  const handleEditAgent = useCallback(async (agentId: string) => {
+    try {
+      const res = await fetch(`/api/agents/${agentId}`).then(r => r.json())
+      if (res?.data?.content) {
+        setAgentContent(res.data.content)
+        setEditingAgent(agentId)
+      }
+    } catch { toast.error('加载角色失败') }
+  }, [])
+
+  const saveAgent = useCallback(async () => {
+    if (!editingAgent) return
+    setAgentSaving(true)
+    try {
+      await fetch(`/api/agents/${editingAgent}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: agentContent }),
+      })
+      toast.success('角色已保存')
+      setEditingAgent(null)
+      loadAgents()
+    } catch { toast.error('保存失败') }
+    finally { setAgentSaving(false) }
+  }, [editingAgent, agentContent, loadAgents])
+
+  const createNewAgent = useCallback(async () => {
+    if (!newAgentId.trim()) return
+    try {
+      await fetch('/api/agents/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: newAgentId.trim(), content: newAgentContent || `# ${newAgentId}\n\n在这里编写角色的提示词...` }),
+      })
+      toast.success('角色创建成功')
+      setShowNewAgent(false)
+      setNewAgentId('')
+      setNewAgentContent('')
+      loadAgents()
+    } catch { toast.error('创建失败') }
+  }, [newAgentId, newAgentContent, loadAgents])
+
+  const deleteAgent = useCallback(async (agentId: string) => {
+    try {
+      await fetch(`/api/agents/${agentId}`, { method: 'DELETE' })
+      toast.success('角色已删除')
+      loadAgents()
+    } catch { toast.error('删除失败') }
+  }, [loadAgents])
+
   const onSaveGeneral = async () => {
     try {
       await updateSettings({
         default_provider: defaultProvider,
         default_model: defaultModel,
         default_base_url: defaultBaseUrl || undefined,
+        enable_thinking: enableThinking,
+        thinking_budget_tokens: thinkingBudgetTokens,
+        qoder_bridge_dir: bridgeDir || undefined,
+        bridge_timeout_minutes: bridgeTimeout,
       })
       toast.success('设置已保存')
     } catch (e: unknown) {
@@ -191,11 +320,14 @@ export default function SettingsPage() {
       <div className="mx-auto max-w-4xl space-y-6 px-6 py-8 animate-fade-in">
         <h1 className="text-display-sm">设置</h1>
 
-        {/* API Keys */}
+        {/* 🔑 AI 配置 */}
         <section className="clay-card p-5 space-y-3">
+          <h2 className="text-title-sm">🔑 AI 配置</h2>
+
+          {/* API Keys */}
           <div>
-            <h2 className="text-title-sm">API Keys</h2>
-            <p className="text-body-sm" style={{ color: 'var(--clay-muted)' }}>至少配置一个 Provider</p>
+            <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>API Keys</p>
+            <p className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>至少配置一个 Provider</p>
           </div>
 
           {PROVIDERS.map((provider) => {
@@ -278,13 +410,11 @@ export default function SettingsPage() {
               </div>
             )
           })}
-        </section>
 
-        {/* 默认 Provider 和 Model */}
-        <section className="clay-card p-5 space-y-3">
-          <div>
-            <h2 className="text-title-sm">默认模型</h2>
-            <p className="text-xs" style={{ color: 'var(--clay-muted)' }}>投喂时使用的 Provider 和模型</p>
+          {/* 默认模型 */}
+          <div className="pt-3" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
+            <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>默认模型</p>
+            <p className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>投喂时使用的 Provider 和模型</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -318,57 +448,291 @@ export default function SettingsPage() {
               />
             </div>
           </div>
-          <div className="space-y-1">
-            <Label className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>Base URL</Label>
-            <Input
-              value={defaultBaseUrl}
-              onChange={(e) => setDefaultBaseUrl(e.target.value)}
-              placeholder={selectedProviderDef?.defaultBaseUrl ?? '填写 API 地址'}
-              className="h-8 border-border/40 bg-transparent"
-            />
-            {selectedProviderDef && !defaultBaseUrl && (
-              <p className="text-[10px]" style={{ color: 'var(--clay-muted)' }}>
-                留空将使用默认地址：{selectedProviderDef.defaultBaseUrl}
-              </p>
+          <div className="space-y-2 pt-1" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>思考模式</Label>
+                <p className="text-[10px]" style={{ color: 'var(--clay-muted)' }}>
+                  让 AI 先深度推理再回答（Anthropic extended thinking / OpenAI reasoning）
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={enableThinking}
+                onClick={() => setEnableThinking(!enableThinking)}
+                className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors"
+                style={{ background: enableThinking ? 'var(--clay-primary)' : 'var(--clay-hairline)' }}
+              >
+                <span
+                  className="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                  style={{ transform: enableThinking ? 'translateX(16px)' : 'translateX(0)' }}
+                />
+              </button>
+            </div>
+            {enableThinking && (
+              <div className="space-y-1 pl-0">
+                <Label className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>思考 Token 预算</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1000}
+                    max={100000}
+                    step={1000}
+                    value={thinkingBudgetTokens}
+                    onChange={(e) => setThinkingBudgetTokens(Number(e.target.value) || 10000)}
+                    className="h-7 w-32 border-border/40 bg-transparent text-sm"
+                  />
+                  <span className="text-[10px]" style={{ color: 'var(--clay-muted)' }}>tokens（推荐 5,000 ~ 30,000）</span>
+                </div>
+              </div>
             )}
           </div>
+          {/* 外部 Agent 代理 */}
+          <div className="space-y-2 pt-1" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
+            <div>
+              <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>外部 Agent 代理</p>
+              <p className="text-[10px]" style={{ color: 'var(--clay-muted)' }}>
+                将深度探索任务委托给本地运行的外部 AI（如 Claude Code、自定义脚本等）
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>任务交换目录</Label>
+              <Input
+                value={bridgeDir}
+                onChange={(e) => setBridgeDir(e.target.value)}
+                placeholder="~/galaxy/bridge/"
+                className="h-8 border-border/40 bg-transparent text-sm font-mono"
+              />
+              <p className="text-[10px]" style={{ color: 'var(--clay-muted)' }}>外部 Agent 从此目录的 pending/ 读取任务，结果写入 done/</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>任务超时（分钟）</Label>
+              <Input
+                type="number"
+                min={1}
+                max={120}
+                value={bridgeTimeout}
+                onChange={(e) => setBridgeTimeout(Number(e.target.value) || 30)}
+                className="h-7 w-24 border-border/40 bg-transparent text-sm"
+              />
+            </div>
+          </div>
+
           <Button onClick={onSaveGeneral} size="sm" className="h-8">
             保存
           </Button>
         </section>
 
-        {/* 功能开关 */}
+        {/* 🧠 AI 个性化 */}
         <section className="clay-card p-5 space-y-3">
-          <h2 className="text-title-sm">功能</h2>
-          <div className="space-y-2.5">
-            <label className="flex items-center justify-between cursor-pointer">
-              <div>
-                <span className="text-[13px] font-medium" style={{ color: 'var(--clay-ink)' }}>投喂 AI 抽取</span>
-                <p className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>投喂内容时自动抽取知识节点</p>
+          <h2 className="text-title-sm">🧠 AI 个性化</h2>
+
+          {/* 个人档案 */}
+          <div className="flex items-center gap-2">
+            <User className="h-4 w-4" style={{ color: 'var(--clay-primary)' }} />
+            <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>个人档案</p>
+          </div>
+          <p className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>AI 助手会参考这份档案来个性化回答</p>
+          <textarea
+            value={userProfile}
+            onChange={(e) => setUserProfile(e.target.value)}
+            className="w-full rounded-md px-3 py-2 text-sm font-mono outline-none resize-y"
+            style={{ height: '200px', border: '1px solid var(--clay-hairline)', background: 'var(--clay-canvas)', color: 'var(--clay-ink)' }}
+            placeholder="在这里编写你的个人档案，例如：姓名、职业、偏好..."
+          />
+          <Button size="sm" className="h-8" onClick={saveProfile} disabled={profileSaving}>
+            {profileSaving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+            保存
+          </Button>
+
+          {/* 全局记忆 */}
+          <div className="pt-3 flex items-center gap-2" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
+            <Brain className="h-4 w-4" style={{ color: 'var(--clay-primary)' }} />
+            <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>全局记忆</p>
+          </div>
+          <p className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>跨会话持久化的记忆，AI 会在每次对话时参考</p>
+          <textarea
+            value={globalMemory}
+            onChange={(e) => setGlobalMemory(e.target.value)}
+            className="w-full rounded-md px-3 py-2 text-sm font-mono outline-none resize-y"
+            style={{ height: '200px', border: '1px solid var(--clay-hairline)', background: 'var(--clay-canvas)', color: 'var(--clay-ink)' }}
+            placeholder="AI 会自动记录重要信息到这里，你也可以手动编辑..."
+          />
+          <Button size="sm" className="h-8" onClick={saveGlobalMemory} disabled={memorySaving}>
+            {memorySaving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+            保存
+          </Button>
+
+          {/* 角色管理 */}
+          <div className="pt-3 flex items-center justify-between" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
+            <div className="flex items-center gap-2">
+              <Bot className="h-4 w-4" style={{ color: 'var(--clay-primary)' }} />
+              <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>角色管理</p>
+            </div>
+            <Button size="sm" variant="outline" className="h-8 px-3" onClick={() => setShowNewAgent(true)}>
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              新增角色
+            </Button>
+          </div>
+
+          {showNewAgent && (
+            <div className="space-y-2 rounded-md p-4" style={{ border: '1px solid var(--clay-hairline)', background: 'var(--clay-canvas)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[13px] font-medium" style={{ color: 'var(--clay-ink)' }}>新增角色</span>
+                <button onClick={() => { setShowNewAgent(false); setNewAgentId(''); setNewAgentContent('') }}>
+                  <X className="h-4 w-4" style={{ color: 'var(--clay-muted)' }} />
+                </button>
               </div>
-              <div className="relative h-5 w-9 rounded-full transition-colors" style={{ background: settings.enable_feed_ai ? 'var(--clay-primary)' : 'var(--clay-hairline)' }}>
-                <input type="checkbox" checked={!!settings.enable_feed_ai} onChange={(e) => updateSettings({ enable_feed_ai: e.target.checked })} className="sr-only" />
-                <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${settings.enable_feed_ai ? 'translate-x-4' : ''}`} />
+              <Input
+                value={newAgentId}
+                onChange={(e) => setNewAgentId(e.target.value)}
+                placeholder="角色 ID（英文，如 reviewer）"
+                className="h-8 border-border/40 bg-transparent text-sm"
+              />
+              <textarea
+                value={newAgentContent}
+                onChange={(e) => setNewAgentContent(e.target.value)}
+                className="w-full rounded-md px-3 py-2 text-sm font-mono outline-none resize-y"
+                style={{ height: '200px', border: '1px solid var(--clay-hairline)', background: 'var(--clay-surface-card)', color: 'var(--clay-ink)' }}
+                placeholder="角色的提示词内容（Markdown 格式）..."
+              />
+              <div className="flex gap-2">
+                <Button size="sm" className="h-8" onClick={createNewAgent} disabled={!newAgentId.trim()}>
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  创建
+                </Button>
+                <Button size="sm" variant="outline" className="h-8" onClick={() => { setShowNewAgent(false); setNewAgentId(''); setNewAgentContent('') }}>
+                  取消
+                </Button>
               </div>
-            </label>
-            <label className="flex items-center justify-between cursor-pointer">
-              <div>
-                <span className="text-[13px] font-medium" style={{ color: 'var(--clay-ink)' }}>月度预算上限</span>
-                <p className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>限制每月 AI 调用费用</p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {agents.map((agent) => (
+              <div key={agent.id} className="rounded-md p-3" style={{ border: '1px solid var(--clay-hairline)', background: 'var(--clay-canvas)' }}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[13px] font-medium" style={{ color: 'var(--clay-ink)' }}>{agent.name}</span>
+                    <span className="ml-2 text-[11px]" style={{ color: 'var(--clay-muted)' }}>{agent.id}</span>
+                    {agent.description && (
+                      <p className="mt-0.5 text-[11px]" style={{ color: 'var(--clay-muted)' }}>{agent.description}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleEditAgent(agent.id)}
+                      className="rounded p-1.5 transition-colors hover:bg-black/5"
+                      title="编辑"
+                    >
+                      <Pencil className="h-3.5 w-3.5" style={{ color: 'var(--clay-muted)' }} />
+                    </button>
+                    {!['direct', 'thinker', 'partner'].includes(agent.id) && (
+                      <button
+                        onClick={() => deleteAgent(agent.id)}
+                        className="rounded p-1.5 transition-colors hover:bg-red-50"
+                        title="删除"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {editingAgent === agent.id && (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      value={agentContent}
+                      onChange={(e) => setAgentContent(e.target.value)}
+                      className="w-full rounded-md px-3 py-2 text-sm font-mono outline-none resize-y"
+                      style={{ height: '300px', border: '1px solid var(--clay-hairline)', background: 'var(--clay-surface-card)', color: 'var(--clay-ink)' }}
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" className="h-8" onClick={saveAgent} disabled={agentSaving}>
+                        {agentSaving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                        保存
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => setEditingAgent(null)}>
+                        <X className="mr-1 h-3.5 w-3.5" />
+                        取消
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="relative h-5 w-9 rounded-full transition-colors" style={{ background: settings.enable_monthly_budget ? 'var(--clay-primary)' : 'var(--clay-hairline)' }}>
-                <input type="checkbox" checked={!!settings.enable_monthly_budget} onChange={(e) => updateSettings({ enable_monthly_budget: e.target.checked })} className="sr-only" />
-                <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${settings.enable_monthly_budget ? 'translate-x-4' : ''}`} />
-              </div>
-            </label>
+            ))}
+            {agents.length === 0 && (
+              <p className="py-4 text-center text-[13px]" style={{ color: 'var(--clay-muted)' }}>暂无角色，点击上方按钮新增</p>
+            )}
           </div>
         </section>
 
-        {/* 主动扫描 */}
+        {/* ⚡ 图谱维护 */}
         <section className="clay-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
+          <h2 className="text-title-sm">⚡ 图谱维护</h2>
+
+          {/* 重建关联 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[13px] font-medium" style={{ color: 'var(--clay-ink)' }}>重建关联</span>
+              <p className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>
+                {rebuildStatus || '全量重新生成所有节点关联和边描述（耗时较长）'}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              disabled={rebuilding}
+              onClick={async () => {
+                setRebuilding(true)
+                setRebuildStatus('启动中…')
+                try {
+                  const res = await fetch('/api/edges/rebuild', { method: 'POST' })
+                  const json = await res.json()
+                  if (!res.ok) { throw new Error(json.error ?? '启动失败') }
+                  const taskId = json.data?.taskId
+                  if (!taskId) throw new Error('未获取到任务 ID')
+                  setRebuildStatus('任务已启动，正在执行…')
+                  const poll = setInterval(async () => {
+                    try {
+                      const r = await fetch(`/api/edges/rebuild?taskId=${taskId}`)
+                      const d = (await r.json()).data
+                      if (!d) return
+                      if (d.phase === 'backfilling') {
+                        setRebuildStatus(`补充关联中… ${d.progress?.current ?? 0}/${d.progress?.total ?? '?'}`)
+                      } else if (d.phase === 'regenerating') {
+                        setRebuildStatus(`生成描述中… ${d.progress?.current ?? 0}/${d.progress?.total ?? '?'}`)
+                      } else if (d.phase === 'completed') {
+                        clearInterval(poll)
+                        const result = d.result
+                        setRebuildStatus(`完成：新增 ${result?.created ?? 0} 条关联，更新 ${result?.updated ?? 0} 条描述`)
+                        setRebuilding(false)
+                        toast.success('重建关联完成')
+                      } else if (d.phase === 'failed') {
+                        clearInterval(poll)
+                        setRebuildStatus(`失败：${d.error ?? '未知错误'}`)
+                        setRebuilding(false)
+                        toast.error('重建关联失败')
+                      }
+                    } catch { /* 轮询失败静默 */ }
+                  }, 2000)
+                } catch (err: unknown) {
+                  setRebuildStatus('')
+                  setRebuilding(false)
+                  toast.error(err instanceof Error ? err.message : '启动失败')
+                }
+              }}
+            >
+              {rebuilding ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+              {rebuilding ? '执行中' : '重建'}
+            </Button>
+          </div>
+
+          {/* 主动扫描 */}
+          <div className="pt-3 flex items-center gap-2" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
             <Radar className="h-4 w-4" />
-            <h2 className="text-title-sm">主动扫描</h2>
+            <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>主动扫描</p>
           </div>
           <p className="text-xs" style={{ color: 'var(--clay-muted)' }}>AI 定时扫描图谱中的不足之处并生成改进建议</p>
 
@@ -523,9 +887,26 @@ export default function SettingsPage() {
           )}
         </section>
 
-        {/* AI 用量统计 */}
+        {/* 💰 用量与预算 */}
         <section className="clay-card p-5 space-y-3">
-          <h2 className="text-title-sm">AI 用量统计</h2>
+          <h2 className="text-title-sm">💰 用量与预算</h2>
+
+          {/* 月度预算 */}
+          <label className="flex items-center justify-between cursor-pointer">
+            <div>
+              <span className="text-[13px] font-medium" style={{ color: 'var(--clay-ink)' }}>月度预算上限</span>
+              <p className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>限制每月 AI 调用费用</p>
+            </div>
+            <div className="relative h-5 w-9 rounded-full transition-colors" style={{ background: settings.enable_monthly_budget ? 'var(--clay-primary)' : 'var(--clay-hairline)' }}>
+              <input type="checkbox" checked={!!settings.enable_monthly_budget} onChange={(e) => updateSettings({ enable_monthly_budget: e.target.checked })} className="sr-only" />
+              <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${settings.enable_monthly_budget ? 'translate-x-4' : ''}`} />
+            </div>
+          </label>
+
+          {/* 用量统计 */}
+          <div className="pt-2" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
+            <p className="text-body-sm font-medium mb-2" style={{ color: 'var(--clay-ink)' }}>用量统计</p>
+          </div>
           {costStats ? (
             <div className="space-y-1.5 text-[13px]">
               <p>
@@ -555,11 +936,14 @@ export default function SettingsPage() {
           )}
         </section>
 
-        {/* 风险控制 */}
+        {/* 🛡️ 安全与数据 */}
         <section className="clay-card p-5 space-y-3">
+          <h2 className="text-title-sm">🛡️ 安全与数据</h2>
+
+          {/* 风险控制 */}
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" style={{ color: 'var(--clay-warning)' }} />
-            <h2 className="text-title-sm">风险控制</h2>
+            <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>风险控制</p>
           </div>
           {riskData ? (
             <div className="space-y-3">
@@ -625,13 +1009,11 @@ export default function SettingsPage() {
           ) : (
             <p className="text-[13px]" style={{ color: 'var(--clay-muted)' }}>加载中…</p>
           )}
-        </section>
 
-        {/* 数据安全 */}
-        <section className="clay-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
+          {/* 数据安全 */}
+          <div className="pt-3 flex items-center gap-2" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
             <Database className="h-4 w-4" style={{ color: 'var(--clay-ink)' }} />
-            <h2 className="text-title-sm">数据安全</h2>
+            <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>数据安全</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -697,17 +1079,144 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
-        </section>
 
-        {/* 🛡️ 安全模式 */}
-        <section className="clay-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
+          {/* 导入数据 */}
+          <div className="pt-3 flex items-center gap-2" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
+            <Upload className="h-4 w-4" style={{ color: 'var(--clay-ink)' }} />
+            <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>导入数据</p>
+          </div>
+          <div className="space-y-3">
+            <p className="text-[13px]" style={{ color: 'var(--clay-muted)' }}>
+              从 Galaxy JSON 文件导入节点、边、切面数据。导入前会自动备份当前数据库。
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                ref={importFileRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  setImporting(true)
+                  try {
+                    const text = await file.text()
+                    const data = JSON.parse(text)
+                    const result = await api.importData(data)
+                    toast.success(result.message)
+                  } catch (error: unknown) {
+                    toast.error(error instanceof Error ? error.message : '导入失败')
+                  } finally {
+                    setImporting(false)
+                    if (importFileRef.current) importFileRef.current.value = ''
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8"
+                disabled={importing}
+                onClick={() => importFileRef.current?.click()}
+              >
+                {importing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1.5 h-3.5 w-3.5" />}
+                选择文件导入
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8"
+                onClick={() => {
+                  const template = {
+                    nodes: [
+                      {
+                        id: 'example-node-1',
+                        title: '示例节点',
+                        summary: '这是一个示例节点的摘要',
+                        domain: '技术/前端',
+                        node_type: 'concept',
+                        channel: 'light',
+                        internalization_status: 'draft',
+                        my_thoughts: '可以在这里写下你的理解和思考',
+                        source_url: null,
+                      },
+                    ],
+                    edges: [
+                      {
+                        id: 'example-edge-1',
+                        source_id: 'example-node-1',
+                        target_id: 'example-node-2',
+                        label: '相关',
+                        relation_type: 'related_to',
+                        weight: 1.0,
+                        origin: 'manual',
+                      },
+                    ],
+                    aspects: [
+                      {
+                        id: 'example-aspect-1',
+                        node_id: 'example-node-1',
+                        title: '核心要点',
+                        content: '这是此节点的核心要点描述',
+                        source_type: 'manual',
+                        template_key: null,
+                      },
+                    ],
+                  }
+                  const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' })
+                  const url = URL.createObjectURL(blob)
+                  const anchor = document.createElement('a')
+                  anchor.href = url
+                  anchor.download = 'galaxy-import-template.json'
+                  anchor.click()
+                  URL.revokeObjectURL(url)
+                  toast.success('模板已下载')
+                }}
+              >
+                <FileDown className="mr-1.5 h-3.5 w-3.5" />
+                下载导入模板
+              </Button>
+            </div>
+            <div className="text-[11px] space-y-0.5" style={{ color: 'var(--clay-muted)' }}>
+              <p>• 支持的字段见模板文件，导入采用 <strong>upsert</strong> 策略（已有相同 ID 的记录跳过）</p>
+              <p>• 也可以直接导入通过「导出数据 → JSON」导出的文件</p>
+            </div>
+          </div>
+
+          {/* Bridge 任务监控 */}
+          <div className="pt-3 flex items-center gap-2" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
+            <Radio className="h-4 w-4" style={{ color: 'var(--clay-ink)' }} />
+            <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>Bridge 任务监控</p>
+          </div>
+          <BridgeMonitor />
+
+          {/* 操作日志 */}
+          <div className="pt-3 flex items-center gap-2" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
+            <Database className="h-4 w-4" style={{ color: 'var(--clay-ink)' }} />
+            <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>操作日志</p>
+          </div>
+          <div className="space-y-2">
+            <p className="text-[13px]" style={{ color: 'var(--clay-muted)' }}>
+              查看所有操作记录，支持撤销有快照的操作。
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLogViewerOpen(true)}
+            >
+              查看操作日志
+            </Button>
+          </div>
+          <OperationLogViewer open={logViewerOpen} onOpenChange={setLogViewerOpen} />
+
+          {/* 安全模式 */}
+          <div className="pt-3 flex items-center gap-2" style={{ borderTop: '1px solid var(--clay-hairline)' }}>
             <Shield className="h-4 w-4" style={{ color: 'var(--clay-error)' }} />
-            <h2 className="text-title-sm">🛡️ 安全模式</h2>
+            <p className="text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>安全模式</p>
           </div>
           <div className="space-y-2.5 text-[13px]">
             <div className="flex items-center gap-3">
-              <span style={{ color: 'var(--clay-muted)' }}>投喂 AI 抽取</span>
+              <span style={{ color: 'var(--clay-muted)' }}>投喂 AI</span>
               <span style={{ color: settings.enable_feed_ai ? 'var(--clay-success)' : 'var(--clay-muted)' }}>
                 {settings.enable_feed_ai ? '✓ 开启' : '✗ 关闭'}
               </span>
@@ -725,6 +1234,15 @@ export default function SettingsPage() {
               </span>
             </div>
           </div>
+
+          {/* 增强安全面板 */}
+          {riskData && (
+            <SafetyPanel
+              inboxBacklog={riskData.inboxBacklog}
+              budget={riskData.budget}
+            />
+          )}
+
           {aiKilled ? (
             <div className="px-3 py-2 text-[13px]" style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--clay-success)', background: 'rgba(34, 197, 94, 0.05)', color: 'var(--clay-success)' }}>
               ✓ 所有 AI 功能已关闭

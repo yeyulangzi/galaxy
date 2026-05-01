@@ -7,6 +7,9 @@ import { invokeStructured } from '../structured-output/strategy'
 import { buildGraphSummary } from '../context/graph-summary'
 import { addCost } from '../budget'
 import { collectTargets, type ScanTarget } from './scan-strategies'
+import { getAdjustedStrategies } from '../feedback/strategy-adjuster'
+import { buildFeedbackContext } from '../feedback/prompt-injector'
+import { calibrateConfidence } from '../feedback/calibrator'
 import { z } from 'zod'
 
 export interface RunScanOptions {
@@ -54,10 +57,10 @@ ${targetDescriptions}
 请针对上述问题，生成具体的改进建议。每条建议需要包含：
 - type: 建议类型（new_node / new_edge / fill_aspect / update_aspect / merge_nodes）
 - payload: 具体内容（JSON 对象）
-  - 对于 new_node：{ title, summary, domain, suggested_edges: [{ target_node_title, relation_type }] }
-  - 对于 new_edge：{ source_title, target_title, relation_type }
-  - 对于 fill_aspect：{ node_title, template_key, content }
-  - 对于 update_aspect：{ node_title, template_key, content }
+  - 对于 new_node：{ title, summary, domain (必须从已有分类中选择，如 "互联网/产品设计"、"互联网/运营体系"、"互联网/用户与社群"、"互联网/数据与增长"、"互联网/市场与商业"、"互联网/平台与组织"，可追加三级), node_type (concept/claim/case/resource), channel (core/light), suggested_edges: [{ target_node_title, relation_type }] }
+  - 对于 new_edge：{ source_title, target_title, relation_type, origin (ai_suggested) }
+  - 对于 fill_aspect：{ node_title, aspect_title, content }
+  - 对于 update_aspect：{ node_title, aspect_title, content }
   - 对于 merge_nodes：{ node_titles: string[], merged_title, reason }
 - rationale: 建议理由
 - confidence: 置信度 (0-1)
@@ -77,8 +80,14 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
   const db = getDb()
 
   try {
-    // 1. 收集 targets
-    const targets = collectTargets(db, strategies)
+    // 1. 策略调整：通过反馈系统调整策略权重并过滤暂停策略
+    const adjusted = getAdjustedStrategies(db, strategies)
+    if (adjusted.paused.length > 0) {
+      console.log(`[runScan] Paused strategies (excluded): ${adjusted.paused.join(', ')}`)
+    }
+
+    // 2. 收集 targets
+    const targets = collectTargets(db, adjusted.strategies)
 
     if (targets.length === 0) {
       db.update(scanRuns)
@@ -104,12 +113,17 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
 
     const prompt = buildScanPrompt(limitedTargets, graphContext)
 
+    // 反馈注入：将历史反馈上下文追加到 system prompt
+    const feedbackContext = buildFeedbackContext(db)
+    const systemPrompt = '你是一个知识图谱优化助手，帮助用户发现和填补图谱中的不足。'
+      + (feedbackContext ? `\n\n${feedbackContext}` : '')
+
     const { data, response } = await invokeStructured({
       provider,
       request: {
         model,
         messages: [
-          { role: 'system', content: '你是一个知识图谱优化助手，帮助用户发现和填补图谱中的不足。' },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },
         ],
         maxTokens: 131072,
@@ -130,6 +144,7 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
     let suggestionsCreated = 0
 
     for (const suggestion of limitedSuggestions) {
+      const calibratedConfidence = calibrateConfidence(db, suggestion.confidence, suggestion.type, 'proactive_scan')
       db.insert(suggestions)
         .values({
           id: generateId('s'),
@@ -139,6 +154,7 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
           payload: JSON.stringify(suggestion.payload),
           rationale: suggestion.rationale,
           confidence: suggestion.confidence,
+          calibrated_confidence: calibratedConfidence,
           status: 'pending',
           created_at: now,
           expires_at: expiresAt,

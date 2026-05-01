@@ -1,68 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { getDb } from '@galaxy/db'
-import { deepDiveSessions, deepDiveMessages, settings } from '@galaxy/db/schema'
+import { deepDiveSessions, deepDiveMessages } from '@galaxy/db/schema'
 import { eq } from 'drizzle-orm'
 import { generateId, nowIso } from '@galaxy/shared'
 import {
-  decrypt,
-  ProviderRegistry,
   buildGlobalChatSystemPrompt,
   CHAT_TOOLS,
   executeToolCall,
-  isWriteTool,
-  setAgentPromptPath,
 } from '@galaxy/ai'
 import type { Message, ToolCall } from '@galaxy/ai'
+import { buildRegistry, initAgentPrompts, MEMORY_DIR, AGENTS_DIR } from '@/lib/api/build-registry'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
-const DEFAULT_THINKER_PROMPT_PATH =
-  process.env.GALAXY_AGENT_PROMPT_THINKER ??
-  '/Users/eleme/qoder/曹鹏的工作区/agents/thinker/system_prompt.md'
-const DEFAULT_PARTNER_PROMPT_PATH =
-  process.env.GALAXY_AGENT_PROMPT_PARTNER ?? '/Users/eleme/.qoder/agents/product-partner.md'
+// 确保 agent prompt 路径在模块加载时初始化
+initAgentPrompts()
 
-setAgentPromptPath('thinker', DEFAULT_THINKER_PROMPT_PATH)
-setAgentPromptPath('partner', DEFAULT_PARTNER_PROMPT_PATH)
-
-/**
- * 从 settings 中读取并构建 ProviderRegistry，返回 registry 和默认 provider/model。
- */
-function buildRegistry(): {
-  registry: ProviderRegistry
-  defaultProviderId: string
-  defaultModel: string
-} {
-  const db = getDb()
-  const row = db.select().from(settings).where(eq(settings.id, 1)).get()
-  if (!row) throw new Error('Settings not initialized')
-
-  const registry = new ProviderRegistry()
-  const creds = (row.provider_credentials ?? {}) as Record<
-    string,
-    { api_key?: string; base_url?: string }
-  >
-
-  for (const [providerId, value] of Object.entries(creds)) {
-    const encryptedKey = value?.api_key ?? ''
-    if (!encryptedKey) continue
-    let apiKey: string
-    try {
-      apiKey = decrypt(encryptedKey)
-    } catch {
-      continue
-    }
-    registry.registerBuiltIn(
-      providerId as Parameters<ProviderRegistry['registerBuiltIn']>[0],
-      { apiKey, baseUrl: value?.base_url ?? (row.default_base_url as string | undefined) },
-    )
-  }
-
-  return {
-    registry,
-    defaultProviderId: (row.default_provider as string) ?? '',
-    defaultModel: (row.default_model as string) ?? '',
+/** 安全读取文件，失败返回 undefined */
+function safeReadFile(filePath: string): string | undefined {
+  try {
+    return readFileSync(filePath, 'utf-8')
+  } catch {
+    return undefined
   }
 }
 
@@ -76,7 +38,7 @@ export async function POST(
   const { sessionId } = params
 
   const body = await req.json().catch(() => ({}))
-  const { content } = body as { content?: string }
+  const { content, useThinking } = body as { content?: string; useThinking?: boolean }
 
   if (!content || typeof content !== 'string' || content.trim().length === 0) {
     return NextResponse.json({ error: 'content is required' }, { status: 400 })
@@ -106,20 +68,48 @@ export async function POST(
     })
     .run()
 
+  // 2.5 如果 session 还没有标题，用第一条消息自动生成
+  if (!session.title) {
+    const autoTitle = content.trim().slice(0, 50).replace(/\n/g, ' ')
+    db.update(deepDiveSessions)
+      .set({ title: autoTitle, updated_at: now })
+      .where(eq(deepDiveSessions.id, sessionId))
+      .run()
+  }
+
   // 3. 构建 provider 和 system prompt
-  const { registry, defaultProviderId, defaultModel } = buildRegistry()
-  const providerId = (session as Record<string, unknown>).provider_id as string | null ?? defaultProviderId
-  const model = (session as Record<string, unknown>).model as string | null ?? defaultModel
+  const { registry, defaultProviderId, defaultModel, thinking } = buildRegistry()
+  const providerId = session.provider_id ?? defaultProviderId
+  const model = session.model ?? defaultModel
   const provider = registry.getOrThrow(providerId)
 
-  if (!(session as Record<string, unknown>).provider_id || !(session as Record<string, unknown>).model) {
+  if (!session.provider_id || !session.model) {
     db.update(deepDiveSessions)
       .set({ provider_id: providerId, model, updated_at: nowIso() })
       .where(eq(deepDiveSessions.id, sessionId))
       .run()
   }
 
-  const systemPrompt = buildGlobalChatSystemPrompt()
+  // 读取用户档案和全局记忆
+  const userProfile = safeReadFile(path.join(MEMORY_DIR, 'user_profile.md'))
+  const globalMemory = safeReadFile(path.join(MEMORY_DIR, 'global_memory.md'))
+
+  // 获取 agentType，支持自定义角色
+  const agentType = session.agent_type ?? 'direct'
+  const builtInAgents = ['direct', 'thinker', 'partner']
+  const isCustomAgent = !builtInAgents.includes(agentType)
+
+  // 如果是自定义角色，读取对应的 md 文件内容
+  let agentPromptContent: string | undefined
+  if (isCustomAgent) {
+    agentPromptContent = safeReadFile(path.join(AGENTS_DIR, `${agentType}.md`))
+  }
+
+  const systemPrompt = buildGlobalChatSystemPrompt(agentType, {
+    userProfile,
+    globalMemory,
+    agentPromptContent,
+  })
 
   // 4. 加载消息历史
   const allMessages = db
@@ -161,8 +151,9 @@ export async function POST(
             model,
             messages: llmMessages,
             tools: CHAT_TOOLS,
-            maxTokens: 4096,
+            /* maxTokens 由 provider 根据模型的 maxOutputTokens 自动设置 */
             temperature: 0.7,
+            thinking: thinking.enabled && useThinking !== false ? thinking : undefined,
           })
 
           if (!response.toolCalls || response.toolCalls.length === 0) {

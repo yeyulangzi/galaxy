@@ -44,14 +44,19 @@ export class OpenAICompatProvider implements LLMProvider {
   }
 
   async invoke(request: LLMRequest): Promise<LLMResponse> {
+    const isReasoner = /reasoner|think/i.test(request.model)
     const params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
       model: request.model,
       messages: request.messages.map((m) => ({
         role: m.role,
         content: m.content,
       })),
-      max_tokens: request.maxTokens ?? 4096,
-      temperature: request.temperature ?? 0.3,
+      max_tokens: request.maxTokens ?? (this.supportedModels.find((m) => m.id === request.model)?.maxOutputTokens ?? 16384),
+    }
+
+    // 推理模型不支持 temperature
+    if (!isReasoner) {
+      params.temperature = request.temperature ?? 0.3
     }
 
     if (request.tools && request.tools.length > 0 && this.capabilities.toolUse) {
@@ -92,16 +97,20 @@ export class OpenAICompatProvider implements LLMProvider {
   }
 
   async *stream(request: LLMRequest): AsyncIterable<string> {
-    const stream = await this.client.chat.completions.create({
+    const isReasoner = /reasoner|think/i.test(request.model)
+    const streamParams: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
       model: request.model,
       messages: request.messages.map((m) => ({
         role: m.role,
         content: m.content,
       })),
-      max_tokens: request.maxTokens ?? 4096,
-      temperature: request.temperature ?? 0.7,
+      max_tokens: request.maxTokens ?? (this.supportedModels.find((m) => m.id === request.model)?.maxOutputTokens ?? 16384),
       stream: true,
-    })
+    }
+    if (!isReasoner) {
+      streamParams.temperature = request.temperature ?? 0.7
+    }
+    const stream = await this.client.chat.completions.create(streamParams)
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta?.content
       if (delta) yield delta
@@ -123,10 +132,10 @@ export function createBailianProvider(config: ProviderConfig): OpenAICompatProvi
     providerId: 'bailian',
     providerDisplayName: '阿里云百炼',
     models: [
-      { id: 'qwen-max', displayName: 'Qwen Max', maxContextTokens: 32000, inputPricePer1kTokens: 0.002, outputPricePer1kTokens: 0.006 },
-      { id: 'qwen-plus', displayName: 'Qwen Plus', maxContextTokens: 131072, inputPricePer1kTokens: 0.0008, outputPricePer1kTokens: 0.002 },
-      { id: 'qwen-turbo', displayName: 'Qwen Turbo', maxContextTokens: 131072, inputPricePer1kTokens: 0.0003, outputPricePer1kTokens: 0.0006 },
-      { id: 'qwen3-235b-a22b', displayName: 'Qwen3 235B', maxContextTokens: 131072, inputPricePer1kTokens: 0.004, outputPricePer1kTokens: 0.012 },
+      { id: 'qwen-max', displayName: 'Qwen Max', maxContextTokens: 32000, maxOutputTokens: 16384, inputPricePer1kTokens: 0.002, outputPricePer1kTokens: 0.006 },
+      { id: 'qwen-plus', displayName: 'Qwen Plus', maxContextTokens: 131072, maxOutputTokens: 16384, inputPricePer1kTokens: 0.0008, outputPricePer1kTokens: 0.002 },
+      { id: 'qwen-turbo', displayName: 'Qwen Turbo', maxContextTokens: 131072, maxOutputTokens: 16384, inputPricePer1kTokens: 0.0003, outputPricePer1kTokens: 0.0006 },
+      { id: 'qwen3-235b-a22b', displayName: 'Qwen3 235B', maxContextTokens: 131072, maxOutputTokens: 16384, inputPricePer1kTokens: 0.004, outputPricePer1kTokens: 0.012 },
     ],
   })
 }
@@ -139,8 +148,8 @@ export function createVolcengineProvider(config: ProviderConfig): OpenAICompatPr
     providerId: 'volcengine',
     providerDisplayName: '火山引擎',
     models: [
-      { id: 'doubao-1-5-pro-256k', displayName: '豆包 1.5 Pro', maxContextTokens: 256000, inputPricePer1kTokens: 0.0008, outputPricePer1kTokens: 0.002 },
-      { id: 'doubao-1-5-lite-32k', displayName: '豆包 1.5 Lite', maxContextTokens: 32000, inputPricePer1kTokens: 0.0003, outputPricePer1kTokens: 0.0006 },
+      { id: 'doubao-1-5-pro-256k', displayName: '豆包 1.5 Pro', maxContextTokens: 256000, maxOutputTokens: 12288, inputPricePer1kTokens: 0.0008, outputPricePer1kTokens: 0.002 },
+      { id: 'doubao-1-5-lite-32k', displayName: '豆包 1.5 Lite', maxContextTokens: 32000, maxOutputTokens: 12288, inputPricePer1kTokens: 0.0003, outputPricePer1kTokens: 0.0006 },
     ],
   })
 }
@@ -153,8 +162,8 @@ export function createDeepSeekProvider(config: ProviderConfig): OpenAICompatProv
     providerId: 'deepseek',
     providerDisplayName: 'DeepSeek',
     models: [
-      { id: 'deepseek-chat', displayName: 'DeepSeek Chat (V3)', maxContextTokens: 65536, inputPricePer1kTokens: 0.00027, outputPricePer1kTokens: 0.0011 },
-      { id: 'deepseek-reasoner', displayName: 'DeepSeek Reasoner (R1)', maxContextTokens: 65536, inputPricePer1kTokens: 0.00055, outputPricePer1kTokens: 0.0022 },
+      { id: 'deepseek-chat', displayName: 'DeepSeek Chat (V3)', maxContextTokens: 65536, maxOutputTokens: 8192, inputPricePer1kTokens: 0.00027, outputPricePer1kTokens: 0.0011 },
+      { id: 'deepseek-reasoner', displayName: 'DeepSeek Reasoner (R1)', maxContextTokens: 65536, maxOutputTokens: 16384, inputPricePer1kTokens: 0.00055, outputPricePer1kTokens: 0.0022 },
     ],
   })
 }

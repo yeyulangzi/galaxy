@@ -12,8 +12,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
   const { agentType } = body as { agentType?: string }
 
-  if (!agentType || !['direct', 'thinker', 'partner'].includes(agentType)) {
-    return NextResponse.json({ error: 'agentType must be direct, thinker, or partner' }, { status: 400 })
+  if (!agentType || typeof agentType !== 'string' || agentType.trim().length === 0) {
+    return NextResponse.json({ error: 'agentType is required' }, { status: 400 })
   }
 
   const sessionId = generateId('d')

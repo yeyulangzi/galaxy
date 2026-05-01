@@ -3,9 +3,10 @@ import { getDb } from '@galaxy/db'
 import { suggestions, nodes, edges, aspects, operationLogs } from '@galaxy/db/schema'
 import { eq, and, inArray } from 'drizzle-orm'
 import { generateId, nowIso, slugify } from '@galaxy/shared'
-import { collectFeedback } from '@galaxy/ai'
+import { collectFeedback, loadAspectTemplates } from '@galaxy/ai'
 import { ensureDb } from '@/lib/api/ensure-db'
 import { ConfirmActionSchema } from '@/lib/api/schemas'
+import { resolveDataDir } from '@/lib/api/build-registry'
 
 type Author = 'user' | 'ai_feed' | 'ai_proactive' | 'ai_deepdive'
 
@@ -41,6 +42,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       db.update(suggestions)
         .set({ status: 'rejected', decided_at: now, decision_note: decision_note ?? null })
         .where(eq(suggestions.id, params.id))
+        .run()
+
+      // 记录 reject 操作日志
+      db.insert(operationLogs)
+        .values({
+          id: generateId('ol'),
+          operation: 'confirm_reject',
+          affected_ids: JSON.stringify([params.id]),
+          payload_snapshot: JSON.stringify({ suggestion: { id: suggestion.id, type: suggestion.type, payload: suggestion.payload } }),
+          user_note: `拒绝建议 [${suggestion.type}]`,
+          created_at: now,
+        })
         .run()
 
       try {
@@ -145,20 +158,26 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             .run()
           createdEntities.push({ type: 'aspect_updated', id: existingAspect.id })
         } else {
-          const aspectId = generateId('a')
-          db.insert(aspects)
-            .values({
-              id: aspectId,
-              node_id: targetNode.id,
-              title: payloadObj.aspect_title,
-              content: payloadObj.content,
-              source_type: 'manual',
-              created_by: createdBy,
-              created_at: now,
-              updated_at: now,
-            })
-            .run()
-          createdEntities.push({ type: 'aspect', id: aspectId })
+          const aspectTemplatesDir = resolveDataDir('aspects')
+          const aspectTemplates = loadAspectTemplates(aspectTemplatesDir)
+          const matchedTemplate = aspectTemplates.find((t) => t.title === payloadObj.aspect_title)
+          if (matchedTemplate) {
+            const aspectId = generateId('a')
+            db.insert(aspects)
+              .values({
+                id: aspectId,
+                node_id: targetNode.id,
+                template_key: matchedTemplate.key,
+                title: payloadObj.aspect_title,
+                content: payloadObj.content,
+                source_type: 'manual',
+                created_by: createdBy,
+                created_at: now,
+                updated_at: now,
+              })
+              .run()
+            createdEntities.push({ type: 'aspect', id: aspectId })
+          }
         }
       }
     } else if (suggestion.type === 'update_aspect') {
@@ -177,20 +196,26 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             .run()
           createdEntities.push({ type: 'aspect_updated', id: existingAspect.id })
         } else {
-          const aspectId = generateId('a')
-          db.insert(aspects)
-            .values({
-              id: aspectId,
-              node_id: targetNode.id,
-              title: payloadObj.aspect_title,
-              content: payloadObj.content,
-              source_type: 'manual',
-              created_by: createdBy,
-              created_at: now,
-              updated_at: now,
-            })
-            .run()
-          createdEntities.push({ type: 'aspect', id: aspectId })
+          const aspectTemplatesDir = resolveDataDir('aspects')
+          const aspectTemplates = loadAspectTemplates(aspectTemplatesDir)
+          const matchedTemplate = aspectTemplates.find((t) => t.title === payloadObj.aspect_title)
+          if (matchedTemplate) {
+            const aspectId = generateId('a')
+            db.insert(aspects)
+              .values({
+                id: aspectId,
+                node_id: targetNode.id,
+                template_key: matchedTemplate.key,
+                title: payloadObj.aspect_title,
+                content: payloadObj.content,
+                source_type: 'manual',
+                created_by: createdBy,
+                created_at: now,
+                updated_at: now,
+              })
+              .run()
+            createdEntities.push({ type: 'aspect', id: aspectId })
+          }
         }
       }
     } else if (suggestion.type === 'merge_nodes') {
@@ -333,6 +358,24 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           createdEntities.push({ type: 'node_updated', id: targetNode.id })
         }
       }
+    }
+
+    // 记录操作日志（merge_nodes 已在自己的分支中记录，这里跳过避免重复）
+    if (suggestion.type !== 'merge_nodes') {
+      db.insert(operationLogs)
+        .values({
+          id: generateId('ol'),
+          operation: `confirm_${action}_${suggestion.type}`,
+          affected_ids: JSON.stringify(createdEntities.map((e) => e.id)),
+          payload_snapshot: JSON.stringify({
+            suggestion: { id: suggestion.id, type: suggestion.type, payload: payloadObj },
+            action,
+            created: createdEntities,
+          }),
+          user_note: `${action === 'accept_modified' ? '修改确认' : '确认'}建议 [${suggestion.type}]`,
+          created_at: now,
+        })
+        .run()
     }
 
     db.update(suggestions)

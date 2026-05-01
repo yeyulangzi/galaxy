@@ -1,11 +1,15 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { getDb } from '@galaxy/db'
-import { settings, scanRuns } from '@galaxy/db/schema'
+import { settings, scanRuns, operationLogs, suggestions, deepDiveSessions } from '@galaxy/db/schema'
 import { generateId, nowIso } from '@galaxy/shared'
-import { eq } from 'drizzle-orm'
+import { eq, and, lt, isNotNull } from 'drizzle-orm'
 import { ProviderRegistry } from './providers/registry'
 import { decrypt } from './crypto'
 import { checkBudget } from './budget'
 import { runScan } from './tasks/run-scan'
+import { recalibrateAllPending } from './feedback/calibrator'
+import { learnPreferences } from './feedback/personalizer'
 
 let schedulerTimer: ReturnType<typeof setInterval> | null = null
 let lastCheckMinute = ''
@@ -156,6 +160,125 @@ function tick(): void {
 
   try {
     const db = getDb()
+
+    // 每日凌晨 4:00 执行置信度重校准
+    if (now.getHours() === 4 && now.getMinutes() === 0) {
+      try {
+        console.log('[scheduler] Running daily confidence recalibration')
+        recalibrateAllPending(db)
+        db.insert(operationLogs)
+          .values({
+            id: generateId('o'),
+            operation: 'recalibrate_confidence',
+            affected_ids: JSON.stringify([]),
+            user_note: 'Daily confidence recalibration completed',
+            created_at: nowIso(),
+          })
+          .run()
+      } catch (recalError) {
+        console.error('[scheduler] Recalibration failed:', recalError)
+      }
+    }
+
+    // 每日凌晨 4:30 执行用户偏好学习
+    if (now.getHours() === 4 && now.getMinutes() === 30) {
+      try {
+        console.log('[scheduler] Running daily preference learning')
+        learnPreferences(db)
+        db.insert(operationLogs)
+          .values({
+            id: generateId('o'),
+            operation: 'learn_preferences',
+            affected_ids: JSON.stringify([]),
+            user_note: 'Daily preference learning completed',
+            created_at: nowIso(),
+          })
+          .run()
+      } catch (prefError) {
+        console.error('[scheduler] Preference learning failed:', prefError)
+      }
+    }
+
+    // ── 每小时整点：过期 pending suggestions ──
+    if (now.getMinutes() === 0) {
+      try {
+        const nowStr = now.toISOString()
+        const expired = db
+          .update(suggestions)
+          .set({ status: 'expired', decided_at: nowStr })
+          .where(
+            and(
+              eq(suggestions.status, 'pending'),
+              isNotNull(suggestions.expires_at),
+              lt(suggestions.expires_at, nowStr),
+            ),
+          )
+          .run()
+
+        if (expired.changes > 0) {
+          console.log(`[scheduler] Expired ${expired.changes} stale suggestions`)
+        }
+      } catch (expireError) {
+        console.error('[scheduler] Suggestion expiry failed:', expireError)
+      }
+    }
+
+    // ── 每日 05:00：清理 Bridge archive 超过 7 天的文件 ──
+    if (now.getHours() === 5 && now.getMinutes() === 0) {
+      try {
+        const row = db.select().from(settings).where(eq(settings.id, 1)).get()
+        const bridgeDir = row?.qoder_bridge_dir?.replace(/^~/, process.env.HOME ?? '') ?? ''
+        const archiveDir = path.join(bridgeDir, 'archive')
+
+        if (fs.existsSync(archiveDir)) {
+          const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+          const files = fs.readdirSync(archiveDir)
+          let cleaned = 0
+
+          for (const file of files) {
+            const filePath = path.join(archiveDir, file)
+            const stat = fs.statSync(filePath)
+            if (stat.mtimeMs < sevenDaysAgo) {
+              fs.unlinkSync(filePath)
+              cleaned++
+            }
+          }
+
+          if (cleaned > 0) {
+            console.log(`[scheduler] Cleaned ${cleaned} archived bridge files older than 7 days`)
+          }
+        }
+      } catch (archiveError) {
+        console.error('[scheduler] Bridge archive cleanup failed:', archiveError)
+      }
+    }
+
+    // ── 每 30 分钟（整点和半点）：Deep Dive 超时检测 ──
+    if (now.getMinutes() === 0 || now.getMinutes() === 30) {
+      try {
+        const row = db.select().from(settings).where(eq(settings.id, 1)).get()
+        const timeoutMinutes = row?.bridge_timeout_minutes ?? 30
+        const cutoff = new Date(now.getTime() - timeoutMinutes * 60 * 1000).toISOString()
+
+        const timedOut = db
+          .update(deepDiveSessions)
+          .set({ status: 'abandoned', updated_at: now.toISOString() })
+          .where(
+            and(
+              eq(deepDiveSessions.status, 'active'),
+              lt(deepDiveSessions.updated_at, cutoff),
+            ),
+          )
+          .run()
+
+        if (timedOut.changes > 0) {
+          console.log(`[scheduler] Marked ${timedOut.changes} stale deep-dive sessions as abandoned`)
+        }
+      } catch (timeoutError) {
+        console.error('[scheduler] Deep Dive timeout check failed:', timeoutError)
+      }
+    }
+
     const row = db.select().from(settings).where(eq(settings.id, 1)).get()
     if (!row || !row.enable_proactive_scan) return
 

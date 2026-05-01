@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,19 @@ export function FeedFab() {
   const [textContent, setTextContent] = useState('')
   const [urlContent, setUrlContent] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [enableAiExtract, setEnableAiExtract] = useState(true)
   const { loadInbox } = useInboxStore()
+
+  // 打开弹窗时读取设置
+  useEffect(() => {
+    if (!open) return
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((data) => {
+        setEnableAiExtract(data?.data?.enable_feed_ai ?? true)
+      })
+      .catch(() => {})
+  }, [open])
 
   const reset = () => {
     setTextContent('')
@@ -47,10 +59,10 @@ export function FeedFab() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full clay-button text-[hsl(var(--primary-foreground))] shadow-clay-md transition-all duration-200 hover:scale-105 hover:shadow-clay-lg active:scale-95 active:shadow-clay-pressed"
+        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full clay-button transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg"
         title="投喂知识"
       >
-        <Plus className="h-5 w-5" />
+        <Plus className="h-6 w-6" strokeWidth={2.5} />
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -60,16 +72,16 @@ export function FeedFab() {
             <p className="text-sm text-muted-foreground">粘贴文本或 URL，AI 会自动抽取知识节点</p>
           </DialogHeader>
 
-          <div className="flex gap-1 rounded-xl bg-muted/50 p-1">
+          <div className="flex gap-1 rounded-[var(--radius-pill)] p-1" style={{ background: 'var(--clay-surface-soft)' }}>
             <button
               onClick={() => setMode('text')}
-              className={`flex-1 rounded-xl px-3 py-1.5 text-sm font-medium transition-all ${mode === 'text' ? 'bg-background text-foreground shadow-clay-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`flex-1 rounded-[var(--radius-pill)] px-3 py-1.5 text-sm font-medium transition-all ${mode === 'text' ? 'bg-[var(--clay-canvas)] text-[var(--clay-ink)] shadow-sm' : 'text-[var(--clay-muted)] hover:text-[var(--clay-ink)]'}`}
             >
               文本
             </button>
             <button
               onClick={() => setMode('url')}
-              className={`flex-1 rounded-xl px-3 py-1.5 text-sm font-medium transition-all ${mode === 'url' ? 'bg-background text-foreground shadow-clay-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`flex-1 rounded-[var(--radius-pill)] px-3 py-1.5 text-sm font-medium transition-all ${mode === 'url' ? 'bg-[var(--clay-canvas)] text-[var(--clay-ink)] shadow-sm' : 'text-[var(--clay-muted)] hover:text-[var(--clay-ink)]'}`}
             >
               URL
             </button>
@@ -96,6 +108,37 @@ export function FeedFab() {
               />
             </div>
           )}
+
+          {/* AI 抽取开关 */}
+          <div className="flex items-center justify-between py-1">
+            <div>
+              <span className="text-[13px] font-medium" style={{ color: 'var(--clay-ink)' }}>AI 自动抽取</span>
+              <p className="text-[11px]" style={{ color: 'var(--clay-muted)' }}>
+                {enableAiExtract ? '投喂后 AI 自动抽取知识节点' : '仅保存原文，不做 AI 抽取'}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={enableAiExtract}
+              onClick={() => {
+                const next = !enableAiExtract
+                setEnableAiExtract(next)
+                fetch('/api/settings', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ enable_feed_ai: next }),
+                }).catch(() => {})
+              }}
+              className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors"
+              style={{ background: enableAiExtract ? 'var(--clay-primary)' : 'var(--clay-hairline)' }}
+            >
+              <span
+                className="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                style={{ transform: enableAiExtract ? 'translateX(16px)' : 'translateX(0)' }}
+              />
+            </button>
+          </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>

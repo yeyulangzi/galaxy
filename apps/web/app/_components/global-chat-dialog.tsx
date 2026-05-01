@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
-import { Send, Loader2, ArrowDown, Zap } from 'lucide-react'
+import { Zap, Loader2, History } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -11,38 +11,22 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api/client'
 import { useInboxStore } from '@/lib/store/inbox-store'
 import { ToolCallCard } from './tool-call-card'
-
-/* ═══════════════════ types ═══════════════════ */
-
-type AgentType = 'direct' | 'thinker' | 'partner'
-
-interface ToolCall {
-  id: string
-  name: string
-  arguments: Record<string, unknown>
-  result?: unknown
-  loading: boolean
-}
-
-interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  toolCalls?: ToolCall[]
-  thinking?: boolean
-}
+import type { ChatMessage, ToolCallInfo } from '@/app/_components/chat/types'
+import { ChatInput } from '@/app/_components/chat/chat-input'
+import { ChatBubble } from '@/app/_components/chat/chat-bubble'
+import { AgentSelector } from '@/app/_components/chat/agent-selector'
+import { ThinkingToggle } from '@/app/_components/chat/thinking-toggle'
+import { ChatHistorySidebar, type HistorySession } from '@/app/_components/chat/chat-history-sidebar'
+import { ScrollToBottomButton } from '@/app/_components/chat/scroll-to-bottom-button'
+import { useSSEStream, type SSEStreamCallbacks } from '@/hooks/use-sse-stream'
+import { useAutoScroll } from '@/hooks/use-auto-scroll'
+import { useAgentOptions } from '@/hooks/use-agent-options'
+import { useThinkingMode } from '@/hooks/use-thinking-mode'
 
 /* ═══════════════════ constants ═══════════════════ */
-
-const AGENT_OPTIONS: { value: AgentType; label: string; description: string }[] = [
-  { value: 'direct', label: '直接对话', description: '快速问答' },
-  { value: 'thinker', label: '思辨者', description: '深度思考' },
-  { value: 'partner', label: '产品合伙人', description: '共创探索' },
-]
 
 const EMPTY_STATE_LINES = [
   '你好，我是 Galaxy 知识助手 ✨',
@@ -58,153 +42,104 @@ export interface GlobalChatDialogProps {
 }
 
 export function GlobalChatDialog({ open, onOpenChange }: GlobalChatDialogProps) {
-  const [agentType, setAgentType] = useState<AgentType>('direct')
+  const [agentType, setAgentType] = useState<string>('direct')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
   const [sending, setSending] = useState(false)
   const [feeding, setFeeding] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyList, setHistoryList] = useState<HistorySession[]>([])
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [showScrollButton, setShowScrollButton] = useState(false)
+
+  const agentOptions = useAgentOptions()
+  const { thinkingSupported, useThinking, setUseThinking } = useThinkingMode()
+  const { scrollContainerRef, messagesEndRef, showScrollButton, scrollToBottom, handleScroll } = useAutoScroll()
+  const { sendStreamRequest } = useSSEStream()
 
   const { loadInbox } = useInboxStore()
+
+  /* ─── history ─── */
+  const loadHistory = useCallback(async () => {
+    try {
+      const sessions = await api.listChatSessions()
+      setHistoryList(
+        (sessions as unknown as Array<{ id: string; title: string | null; agent_type: string; created_at: string; updated_at: string }>)
+          .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+      )
+    } catch {
+      // 静默失败
+    }
+  }, [])
+
+  useEffect(() => {
+    if (showHistory) {
+      loadHistory()
+    }
+  }, [showHistory, loadHistory])
+
+  const handleResumeSession = useCallback(async (historicSessionId: string) => {
+    try {
+      const data = await api.getChatSession(historicSessionId)
+      const session = data.session as unknown as { agent_type: string }
+      setSessionId(historicSessionId)
+      setAgentType(session.agent_type || 'direct')
+      setMessages(
+        data.messages.map((m) => ({
+          id: m.id,
+          role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+          content: m.content,
+        }))
+      )
+      setShowHistory(false)
+    } catch (error) {
+      toast.error('加载会话失败')
+    }
+  }, [])
+
+  const handleDeleteSession = useCallback(async (targetSessionId: string) => {
+    try {
+      await api.deleteChatSession(targetSessionId)
+      if (targetSessionId === sessionId) {
+        setSessionId(null)
+        setMessages([])
+      }
+      await loadHistory()
+      toast.success('会话已删除')
+    } catch {
+      toast.error('删除失败')
+    }
+  }, [sessionId, loadHistory])
+
+  const handleNewChat = useCallback(() => {
+    setSessionId(null)
+    setMessages([])
+    setAgentType('direct')
+    setShowHistory(false)
+  }, [])
 
   /* ─── reset on close ─── */
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (!nextOpen) {
+        setShowHistory(false)
         setAgentType('direct')
         setSessionId(null)
         setMessages([])
         setInputValue('')
         setSending(false)
         setFeeding(false)
-        setShowScrollButton(false)
       }
       onOpenChange(nextOpen)
     },
     [onOpenChange],
   )
 
-  /* ─── auto-scroll ─── */
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [])
-
   useEffect(() => {
     if (!sending) return
     scrollToBottom()
   }, [messages, sending, scrollToBottom])
-
-  const handleScroll = useCallback(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
-    const distanceFromBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight
-    setShowScrollButton(distanceFromBottom > 100)
-  }, [])
-
-  /* ─── SSE message handler ─── */
-  const processSSEStream = useCallback(
-    async (reader: ReadableStreamDefaultReader<Uint8Array>, assistantMessageId: string) => {
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const raw = line.slice(6).trim()
-          if (!raw || raw === '[DONE]') continue
-
-          let event: { type: string; [key: string]: unknown }
-          try {
-            event = JSON.parse(raw)
-          } catch {
-            continue
-          }
-
-          switch (event.type) {
-            case 'thinking':
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: '思考中...', thinking: true }
-                    : msg,
-                ),
-              )
-              break
-
-            case 'tool_start':
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.id !== assistantMessageId) return msg
-                  const toolCall: ToolCall = {
-                    id: event.toolCallId as string,
-                    name: event.toolName as string,
-                    arguments: (event.arguments as Record<string, unknown>) ?? {},
-                    loading: true,
-                  }
-                  return {
-                    ...msg,
-                    thinking: false,
-                    toolCalls: [...(msg.toolCalls ?? []), toolCall],
-                  }
-                }),
-              )
-              break
-
-            case 'tool_done':
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.id !== assistantMessageId) return msg
-                  return {
-                    ...msg,
-                    toolCalls: msg.toolCalls?.map((tc) =>
-                      tc.id === (event.toolCallId as string)
-                        ? { ...tc, result: event.result, loading: false }
-                        : tc,
-                    ),
-                  }
-                }),
-              )
-              break
-
-            case 'done':
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: event.content as string, thinking: false }
-                    : msg,
-                ),
-              )
-              break
-
-            case 'error':
-              toast.error((event.message as string) ?? '对话出错了')
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: '出错了，请重试', thinking: false }
-                    : msg,
-                ),
-              )
-              break
-          }
-        }
-      }
-    },
-    [],
-  )
 
   /* ─── send message ─── */
   const handleSend = useCallback(async () => {
@@ -236,20 +171,84 @@ export function GlobalChatDialog({ open, onOpenChange }: GlobalChatDialogProps) 
         setSessionId(newId)
       }
 
-      const response = await fetch(`/api/chat/${currentSessionId}/message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: trimmed }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`请求失败: ${response.status}`)
+      const callbacks: SSEStreamCallbacks = {
+        onChunk: (content) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: msg.content + content, thinking: true }
+                : msg,
+            ),
+          )
+        },
+        onThinking: () => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: '思考中...', thinking: true }
+                : msg,
+            ),
+          )
+        },
+        onToolStart: (toolCall) => {
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg.id !== assistantMessageId) return msg
+              const newToolCall: ToolCallInfo = {
+                id: toolCall.id,
+                name: toolCall.name,
+                arguments: toolCall.arguments,
+                loading: true,
+              }
+              return {
+                ...msg,
+                thinking: false,
+                toolCalls: [...(msg.toolCalls ?? []), newToolCall],
+              }
+            }),
+          )
+        },
+        onToolDone: (toolCallId, result) => {
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg.id !== assistantMessageId) return msg
+              return {
+                ...msg,
+                toolCalls: msg.toolCalls?.map((tc) =>
+                  tc.id === toolCallId
+                    ? { ...tc, result, loading: false }
+                    : tc,
+                ),
+              }
+            }),
+          )
+        },
+        onDone: (_messageId, content) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content, thinking: false }
+                : msg,
+            ),
+          )
+        },
+        onError: (errorMsg) => {
+          toast.error(errorMsg || '对话出错了')
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: '出错了，请重试', thinking: false }
+                : msg,
+            ),
+          )
+        },
       }
 
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('无法读取响应流')
-
-      await processSSEStream(reader, assistantMessageId)
+      await sendStreamRequest(
+        `/api/chat/${currentSessionId}/message`,
+        { content: trimmed, useThinking },
+        callbacks,
+      )
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '发送失败')
       setMessages((prev) =>
@@ -262,7 +261,7 @@ export function GlobalChatDialog({ open, onOpenChange }: GlobalChatDialogProps) 
     } finally {
       setSending(false)
     }
-  }, [inputValue, sending, sessionId, agentType, processSSEStream])
+  }, [inputValue, sending, sessionId, agentType, useThinking, sendStreamRequest])
 
   /* ─── feed to graph ─── */
   const handleFeed = useCallback(async () => {
@@ -281,17 +280,6 @@ export function GlobalChatDialog({ open, onOpenChange }: GlobalChatDialogProps) 
     }
   }, [sessionId, feeding, loadInbox])
 
-  /* ─── keyboard ─── */
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault()
-        handleSend()
-      }
-    },
-    [handleSend],
-  )
-
   /* ─── focus textarea on open ─── */
   useEffect(() => {
     if (open) {
@@ -305,20 +293,30 @@ export function GlobalChatDialog({ open, onOpenChange }: GlobalChatDialogProps) 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="max-w-2xl p-0 flex flex-col gap-0 overflow-hidden"
-        style={{ height: '80vh' }}
+        className="p-0 flex gap-0 overflow-hidden"
+        style={{ height: '80vh', maxWidth: showHistory ? '56rem' : '42rem', transition: 'max-width 0.25s ease-in-out' }}
       >
+        {/* ─── history sidebar ─── */}
+        <ChatHistorySidebar
+          open={showHistory}
+          sessions={historyList}
+          currentSessionId={sessionId}
+          agentOptions={agentOptions}
+          onSelect={handleResumeSession}
+          onDelete={handleDeleteSession}
+          onNewChat={handleNewChat}
+        />
+
+        {/* ─── main chat area ─── */}
+        <div className="flex-1 flex flex-col gap-0 overflow-hidden min-w-0 order-1">
         {/* ─── header ─── */}
         <DialogHeader
-          className="flex-shrink-0 px-6 pt-5 pb-3"
-          style={{ borderBottom: '1px solid var(--clay-border)' }}
+          className="flex-shrink-0 px-6 pt-6 pb-3"
+          style={{ borderBottom: '1px solid var(--clay-hairline-soft)' }}
         >
           <div className="flex items-center justify-between pr-6">
             <div>
-              <DialogTitle
-                className="text-lg font-semibold"
-                style={{ color: 'var(--clay-ink)' }}
-              >
+              <DialogTitle className="text-title-md">
                 AI 对话助手
               </DialogTitle>
               <DialogDescription
@@ -328,63 +326,51 @@ export function GlobalChatDialog({ open, onOpenChange }: GlobalChatDialogProps) 
                 与知识图谱对话，探索和关联你的知识
               </DialogDescription>
             </div>
-            {canFeed && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={feeding}
-                onClick={handleFeed}
-                className="gap-1.5"
-                style={{
-                  color: 'var(--clay-coral)',
-                  borderRadius: 'var(--radius-pill)',
-                }}
+            <div className="flex items-center gap-1.5">
+              {canFeed && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={feeding}
+                  onClick={handleFeed}
+                  className="gap-1.5"
+                  style={{
+                    color: 'var(--clay-coral)',
+                    borderRadius: 'var(--radius-pill)',
+                  }}
+                >
+                  {feeding ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Zap className="h-4 w-4" />
+                  )}
+                  投喂到图谱
+                </Button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowHistory(!showHistory)}
+                className="p-1.5 rounded hover:bg-black/5"
+                title="历史会话"
               >
-                {feeding ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Zap className="h-4 w-4" />
-                )}
-                投喂到图谱
-              </Button>
-            )}
+                <History className="h-4 w-4" style={{ color: showHistory ? 'var(--clay-primary)' : 'var(--clay-muted)' }} />
+              </button>
+            </div>
           </div>
         </DialogHeader>
 
         {/* ─── agent type selector (only before first message) ─── */}
         {!sessionId && messages.length === 0 && (
-          <div
-            className="flex-shrink-0 flex items-center gap-2 px-6 py-3"
-            style={{ borderBottom: '1px solid var(--clay-border)' }}
-          >
-            {AGENT_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setAgentType(option.value)}
-                className="px-3 py-1.5 text-sm font-medium transition-colors"
-                style={{
-                  borderRadius: 'var(--radius-pill)',
-                  background:
-                    agentType === option.value
-                      ? 'var(--clay-primary)'
-                      : 'var(--clay-primary-alpha-10)',
-                  color:
-                    agentType === option.value
-                      ? 'var(--clay-on-primary)'
-                      : 'var(--clay-ink)',
-                }}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <AgentSelector options={agentOptions} value={agentType} onChange={setAgentType} />
         )}
+
+        {/* ─── thinking mode toggle ─── */}
+        <ThinkingToggle supported={thinkingSupported} enabled={useThinking} onChange={setUseThinking} />
 
         {/* ─── messages ─── */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto px-6 py-4 relative"
+          className="flex-1 overflow-y-auto px-6 py-3 relative"
           onScroll={handleScroll}
           style={{ minHeight: 0 }}
         >
@@ -404,117 +390,38 @@ export function GlobalChatDialog({ open, onOpenChange }: GlobalChatDialogProps) 
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {messages.map((msg) => (
-                <div
+                <ChatBubble
                   key={msg.id}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className="max-w-[80%] px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap"
-                    style={
-                      msg.role === 'user'
-                        ? {
-                            background: 'var(--clay-primary)',
-                            color: 'var(--clay-on-primary)',
-                            borderRadius: `var(--radius-lg) var(--radius-sm) var(--radius-lg) var(--radius-lg)`,
-                          }
-                        : {
-                            background: 'var(--clay-surface-card)',
-                            color: 'var(--clay-ink)',
-                            borderRadius: `var(--radius-sm) var(--radius-lg) var(--radius-lg) var(--radius-lg)`,
-                          }
-                    }
-                  >
-                    {/* thinking cursor */}
-                    {msg.thinking && (
-                      <span className="inline-block animate-pulse">
-                        {msg.content || '思考中'}
-                        <span className="ml-0.5">▊</span>
-                      </span>
-                    )}
-
-                    {/* normal content */}
-                    {!msg.thinking && msg.content}
-
-                    {/* tool calls */}
-                    {msg.toolCalls && msg.toolCalls.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {msg.toolCalls.map((toolCall) => (
-                          <ToolCallCard
-                            key={toolCall.id}
-                            name={toolCall.name}
-                            arguments={toolCall.arguments}
-                            result={toolCall.result}
-                            loading={toolCall.loading}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  message={msg}
+                  streaming={msg.thinking}
+                  toolCallCard={(tc) => (
+                    <ToolCallCard
+                      name={tc.name}
+                      arguments={tc.arguments}
+                      result={tc.result}
+                      loading={tc.loading}
+                    />
+                  )}
+                />
               ))}
               <div ref={messagesEndRef} />
             </div>
           )}
-
-          {/* scroll-to-bottom button */}
-          {showScrollButton && (
-            <button
-              type="button"
-              onClick={scrollToBottom}
-              className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 px-3 py-1.5 text-xs font-medium shadow-lg transition-opacity"
-              style={{
-                background: 'var(--clay-surface-card)',
-                color: 'var(--clay-ink)',
-                borderRadius: 'var(--radius-pill)',
-                border: '1px solid var(--clay-border)',
-              }}
-            >
-              <ArrowDown className="h-3 w-3" />
-              滚动到底部
-            </button>
-          )}
         </div>
 
+        {/* scroll-to-bottom button */}
+        <ScrollToBottomButton visible={showScrollButton} onClick={scrollToBottom} />
+
         {/* ─── input area ─── */}
-        <div
-          className="flex-shrink-0 px-6 py-4"
-          style={{ borderTop: '1px solid var(--clay-border)' }}
-        >
-          <div className="flex items-end gap-2">
-            <Textarea
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(event) => setInputValue(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="输入你的问题... (Enter 发送, Shift+Enter 换行)"
-              disabled={sending}
-              rows={1}
-              className="flex-1 min-h-[40px] max-h-[120px] resize-none text-sm"
-              style={{
-                borderRadius: 'var(--radius-md)',
-                borderColor: 'var(--clay-border)',
-              }}
-            />
-            <Button
-              size="sm"
-              disabled={sending || !inputValue.trim()}
-              onClick={handleSend}
-              className="h-10 w-10 flex-shrink-0 p-0"
-              style={{
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--clay-primary)',
-                color: 'var(--clay-on-primary)',
-              }}
-            >
-              {sending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
+        <ChatInput
+          value={inputValue}
+          onChange={setInputValue}
+          onSend={handleSend}
+          sending={sending}
+          placeholder="输入你的问题... (Enter 发送, Shift+Enter 换行)"
+        />
         </div>
       </DialogContent>
     </Dialog>

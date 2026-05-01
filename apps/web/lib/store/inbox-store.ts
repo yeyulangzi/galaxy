@@ -44,7 +44,12 @@ export const useInboxStore = create<InboxState>((set, get) => ({
   async batchConfirm(action) {
     const ids = [...get().selectedIds]
     if (ids.length === 0) return
-    await api.batchConfirm({ ids, action })
+    // 分批发送，每批最多 50 个，避免超时和 payload 过大
+    const BATCH_SIZE = 50
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+      const batch = ids.slice(i, i + BATCH_SIZE)
+      await api.batchConfirm({ ids: batch, action })
+    }
     set({
       suggestions: get().suggestions.filter((s) => !get().selectedIds.has(s.id)),
       total: get().total - ids.length,

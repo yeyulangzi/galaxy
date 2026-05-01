@@ -27,9 +27,17 @@ export function buildGraphSummary(): GraphSummaryResult {
     .sort((a, b) => b[1].length - a[1].length)
     .map(([domain, titles]) => ({ domain, titles }))
 
-  const rawText = domains
-    .map((d) => `【${d.domain}】${d.titles.join('、')}`)
-    .join('\n')
+  // 提取已有的一级领域去重列表，供 domain 合并规则使用
+  const topLevelDomains = [...new Set(
+    domains.map((d) => d.domain.split('/')[0]).filter(Boolean),
+  )].sort()
+
+  const rawText = (topLevelDomains.length > 0
+    ? `已有一级领域（必须优先复用，禁止自创语义相近的新领域）：${topLevelDomains.join('、')}\n\n`
+    : '')
+    + domains
+      .map((d) => `【${d.domain}】${d.titles.join('、')}`)
+      .join('\n')
 
   return { totalNodes: allNodes.length, domains, rawText }
 }

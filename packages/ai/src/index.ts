@@ -30,7 +30,7 @@ export { findIslands, findGaps, findAgingNodes, collectTargets } from './tasks/s
 export { runScan } from './tasks/run-scan'
 export { startScheduler, stopScheduler, triggerManualScan } from './scheduler'
 export type { AspectTemplate } from './context/aspect-templates'
-export type { LLMProvider, LLMRequest, LLMResponse, ProviderConfig, ModelInfo, TokenUsage, ToolDefinition, ToolCall, Message } from './providers/types'
+export type { LLMProvider, LLMRequest, LLMResponse, ProviderConfig, ModelInfo, TokenUsage, ToolDefinition, ToolCall, Message, ThinkingConfig } from './providers/types'
 export type { ExtractFromFeedInput, ExtractFromFeedOutput } from './tasks/extract-from-feed'
 export type { DeepDiveContext, DeepDiveAgentType } from './tasks/deep-dive'
 export type { ConversationSummary } from './tasks/summarize-conversation'

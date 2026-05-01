@@ -1,8 +1,16 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { toast } from 'sonner'
-import { MessageCircle, Send, CheckCircle2, Loader2, FileText } from 'lucide-react'
+import { MessageCircle, Loader2, FileText, XCircle, History, Plus, Trash2, MessageSquare } from 'lucide-react'
+import { MarkdownRenderer } from '@/app/_components/chat/markdown-renderer'
+import { ChatInput } from '@/app/_components/chat/chat-input'
+import { AgentSelector } from '@/app/_components/chat/agent-selector'
+import { ThinkingToggle } from '@/app/_components/chat/thinking-toggle'
+import { ScrollToBottomButton } from '@/app/_components/chat/scroll-to-bottom-button'
+import { useAutoScroll } from '@/hooks/use-auto-scroll'
+import { useAgentOptions } from '@/hooks/use-agent-options'
+import { useThinkingMode } from '@/hooks/use-thinking-mode'
 import {
   Dialog,
   DialogContent,
@@ -11,17 +19,10 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api/client'
 import type { DeepDiveMessage, DeepDiveSession } from '@/lib/api/client'
 
-const AGENT_TYPES = [
-  { key: 'direct', label: '直接对话', description: 'Direct' },
-  { key: 'thinker', label: '思辨者', description: 'Thinker' },
-  { key: 'partner', label: '产品合伙人', description: 'Partner' },
-] as const
-
-type AgentType = (typeof AGENT_TYPES)[number]['key']
+type AgentType = string
 
 interface DeepDiveDialogProps {
   open: boolean
@@ -44,22 +45,33 @@ export function DeepDiveDialog({
   const [messages, setMessages] = useState<DeepDiveMessage[]>([])
   const [inputValue, setInputValue] = useState('')
   const [sending, setSending] = useState(false)
-  const [completing, setCompleting] = useState(false)
-  const [completed, setCompleted] = useState(false)
-  const [suggestionsCreated, setSuggestionsCreated] = useState(0)
   const [readOnly, setReadOnly] = useState(false)
-  const [summarizing, setSummarizing] = useState(false)
+  const [activeSummarizeModes, setActiveSummarizeModes] = useState<Set<string>>(new Set())
+  // agentOptions 由共享 hook 提供
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  // 历史侧边栏
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyList, setHistoryList] = useState<Array<{ id: string; title: string | null; agent_type: string; status: string; created_at: string; updated_at: string }>>([])
+
+  // 思考模式
+  const { thinkingSupported, useThinking, setUseThinking } = useThinkingMode({ enabled: open })
+
+  // Bridge mode state
+  type BridgeStatus = 'idle' | 'pending' | 'done' | 'error'
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>('idle')
+  const [bridgeResult, setBridgeResult] = useState<string | null>(null)
+  const [bridgeError, setBridgeError] = useState<string | null>(null)
+  const bridgePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const { scrollContainerRef, messagesEndRef, showScrollButton, scrollToBottom, handleScroll, scrollToBottomIfNeeded } = useAutoScroll()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [])
-
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, scrollToBottom])
+    scrollToBottomIfNeeded()
+  }, [messages, scrollToBottomIfNeeded])
+
+  // Agent options（使用共享 hook，支持 deep-dive 的 data.data.agents 格式）
+  const agentOptions = useAgentOptions({ enabled: open })
 
   /* Load an existing session when opened in read-only mode */
   useEffect(() => {
@@ -70,32 +82,98 @@ export function DeepDiveDialog({
     }
 
     let cancelled = false
-    setReadOnly(true)
     api.getDeepDiveSession(existingSessionId).then((result) => {
       if (cancelled) return
       const s = result.session as Record<string, string>
       const msgs = result.messages as Array<{ id: string; session_id: string; role: string; content: string; created_at: string }>
-      setSessionId(s.id)
+      setSessionId(s.id ?? null)
       setMessages(msgs.map((m) => ({ id: m.id, role: m.role as 'user' | 'assistant' | 'system', content: m.content, created_at: m.created_at })))
       setAgentType((s.agent_type ?? 'direct') as AgentType)
-      setCompleted(s.status === 'completed')
+      setReadOnly(false)
     }).catch(() => {
       if (!cancelled) toast.error('无法加载历史会话')
     })
     return () => { cancelled = true }
   }, [open, existingSessionId])
 
-  function resetState() {
+  // Cleanup bridge polling on unmount or dialog close
+  useEffect(() => {
+    return () => {
+      if (bridgePollRef.current) {
+        clearInterval(bridgePollRef.current)
+        bridgePollRef.current = null
+      }
+    }
+  }, [])
+
+  /* ─── history ─── */
+  const loadHistory = useCallback(async () => {
+    try {
+      const sessions = await api.listNodeSessions(nodeId)
+      setHistoryList(
+        (sessions as unknown as Array<{ id: string; title: string | null; agent_type: string; status: string; created_at: string; updated_at: string }>)
+          .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime()),
+      )
+    } catch { /* ignore */ }
+  }, [nodeId])
+
+  useEffect(() => {
+    if (showHistory) loadHistory()
+  }, [showHistory, loadHistory])
+
+  const handleResumeSession = useCallback(async (targetSessionId: string) => {
+    try {
+      const result = await api.getDeepDiveSession(targetSessionId)
+      const s = result.session as Record<string, string>
+      const msgs = result.messages as Array<{ id: string; session_id: string; role: string; content: string; created_at: string }>
+      setSessionId(s.id ?? null)
+      setMessages(msgs.map((m) => ({ id: m.id, role: m.role as 'user' | 'assistant' | 'system', content: m.content, created_at: m.created_at })))
+      setAgentType((s.agent_type ?? 'direct') as AgentType)
+      setReadOnly(false)
+      setShowHistory(false)
+    } catch {
+      toast.error('无法加载会话')
+    }
+  }, [])
+
+  const handleDeleteHistorySession = useCallback(async (targetSessionId: string) => {
+    if (!confirm('确认删除此对话？')) return
+    try {
+      await api.deleteDeepDiveSession(targetSessionId)
+      setHistoryList((prev) => prev.filter((s) => s.id !== targetSessionId))
+      if (sessionId === targetSessionId) {
+        resetStateInner()
+      }
+      toast.success('已删除')
+    } catch {
+      toast.error('删除失败')
+    }
+  }, [sessionId])
+
+  const handleNewChat = useCallback(() => {
+    resetStateInner()
+    setShowHistory(false)
+  }, [])
+
+  function resetStateInner() {
     setSessionId(null)
     setMessages([])
     setInputValue('')
     setSending(false)
-    setCompleting(false)
-    setCompleted(false)
-    setSuggestionsCreated(0)
     setReadOnly(false)
-    setSummarizing(false)
+    setActiveSummarizeModes(new Set())
     setAgentType('direct')
+    setBridgeStatus('idle')
+    setBridgeResult(null)
+    setBridgeError(null)
+    if (bridgePollRef.current) {
+      clearInterval(bridgePollRef.current)
+      bridgePollRef.current = null
+    }
+  }
+
+  function resetState() {
+    resetStateInner()
   }
 
   const startSession = useCallback(async () => {
@@ -133,6 +211,7 @@ export function DeepDiveDialog({
     setMessages((prev) => [...prev, userMessage])
     setInputValue('')
     setSending(true)
+    scrollToBottom()
 
     // Add a temporary streaming AI message
     const tempAiId = `streaming-${Date.now()}`
@@ -145,7 +224,7 @@ export function DeepDiveDialog({
       const response = await fetch(`/api/deepdive/${currentSessionId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, useThinking }),
       })
 
       if (!response.ok || !response.body) {
@@ -205,77 +284,247 @@ export function DeepDiveDialog({
     }
   }, [inputValue, sending, sessionId, nodeId, agentType])
 
-  const handleComplete = useCallback(async () => {
-    if (!sessionId || completing) return
-    setCompleting(true)
-    try {
-      const result = await api.completeDeepDive(sessionId)
-      setCompleted(true)
-      setSuggestionsCreated(result.suggestionsCreated)
-      toast.success(`对话已结束，创建了 ${result.suggestionsCreated} 条建议`)
-    } catch {
-      toast.error('结束对话失败')
-    } finally {
-      setCompleting(false)
-    }
-  }, [sessionId, completing])
-
-  const handleSummarize = useCallback(async (mode: 'feed' | 'aspect') => {
+  const handleSummarize = useCallback(async (mode: 'feed' | 'aspect' | 'extract-aspects') => {
     const targetSessionId = sessionId ?? existingSessionId
-    if (!targetSessionId || summarizing) return
-    setSummarizing(true)
+    if (!targetSessionId) return
+
+    if (activeSummarizeModes.has(mode)) {
+      const modeLabel = mode === 'feed' ? '投喂数据' : mode === 'extract-aspects' ? '提取切面' : '总结附件'
+      toast.info(`${modeLabel}任务进行中，请稍候…`)
+      return
+    }
+
+    setActiveSummarizeModes((prev) => new Set(prev).add(mode))
     try {
       const result = await api.summarizeConversation(targetSessionId, mode)
       if (result.mode === 'feed') {
         toast.success(`总结已投喂，创建了 ${result.suggestionsCount ?? 0} 条建议`)
+      } else if (result.mode === 'extract-aspects') {
+        toast.success('正在后台提取切面，稍后刷新即可查看')
       } else {
-        toast.success('总结已附加到节点切面')
+        toast.success('总结已生成并写入附件')
       }
     } catch {
-      toast.error('总结失败')
+      toast.error('操作失败')
     } finally {
-      setSummarizing(false)
+      setActiveSummarizeModes((prev) => {
+        const next = new Set(prev)
+        next.delete(mode)
+        return next
+      })
     }
-  }, [sessionId, existingSessionId, summarizing])
+  }, [sessionId, existingSessionId, activeSummarizeModes])
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault()
-        handleSend()
+  const startBridgePoll = useCallback((targetSessionId: string) => {
+    if (bridgePollRef.current) clearInterval(bridgePollRef.current)
+    bridgePollRef.current = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/deepdive/${targetSessionId}/bridge`)
+        if (!response.ok) throw new Error('Poll failed')
+        const data = await response.json()
+        if (data.status === 'done') {
+          setBridgeStatus('done')
+          setBridgeResult(data.result ?? 'Bridge 任务已完成')
+          if (bridgePollRef.current) {
+            clearInterval(bridgePollRef.current)
+            bridgePollRef.current = null
+          }
+        } else if (data.status === 'error') {
+          setBridgeStatus('error')
+          setBridgeError(data.error ?? 'Bridge 任务失败')
+          if (bridgePollRef.current) {
+            clearInterval(bridgePollRef.current)
+            bridgePollRef.current = null
+          }
+        }
+      } catch {
+        // Silently retry on next interval
       }
-    },
-    [handleSend],
-  )
+    }, 5000)
+  }, [])
+
+  const handleBridgeStart = useCallback(async () => {
+    if (!sessionId || bridgeStatus === 'pending') return
+    setBridgeStatus('pending')
+    setBridgeResult(null)
+    setBridgeError(null)
+    try {
+      const response = await fetch(`/api/deepdive/${sessionId}/bridge`, {
+        method: 'POST',
+      })
+      if (!response.ok) throw new Error('Failed to create bridge task')
+      toast.success('已委托外部 Agent')
+      startBridgePoll(sessionId)
+    } catch {
+      setBridgeStatus('error')
+      setBridgeError('委托外部 Agent 失败')
+      toast.error('委托外部 Agent 失败')
+    }
+  }, [sessionId, bridgeStatus, startBridgePoll])
+
+  const handleBridgeCancel = useCallback(async () => {
+    if (!sessionId) return
+    try {
+      await fetch(`/api/deepdive/${sessionId}/bridge`, { method: 'DELETE' })
+      setBridgeStatus('idle')
+      setBridgeResult(null)
+      setBridgeError(null)
+      if (bridgePollRef.current) {
+        clearInterval(bridgePollRef.current)
+        bridgePollRef.current = null
+      }
+      toast.success('已取消委托')
+    } catch {
+      toast.error('取消委托失败')
+    }
+  }, [sessionId])
+
+
 
   const sessionStarted = sessionId !== null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl h-[80vh] flex flex-col p-0 gap-0">
+      <DialogContent
+        className="p-0 flex gap-0 overflow-hidden"
+        style={{ height: '80vh', maxWidth: showHistory ? '56rem' : '42rem', transition: 'max-width 0.25s ease-in-out' }}
+      >
+        {/* ─── history sidebar (左侧) ─── */}
+        {showHistory && (
+          <div
+            className="flex-shrink-0 flex flex-col w-64 order-0"
+            style={{ borderRight: '1px solid var(--clay-hairline-soft)', background: 'var(--clay-surface)' }}
+          >
+            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--clay-hairline-soft)' }}>
+              <span className="text-sm font-medium" style={{ color: 'var(--clay-ink)' }}>历史会话</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={handleNewChat} className="p-1 rounded hover:bg-black/5" title="新建对话">
+                  <Plus className="h-4 w-4" style={{ color: 'var(--clay-muted)' }} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {historyList.length === 0 ? (
+                <p className="text-xs px-4 py-6 text-center" style={{ color: 'var(--clay-muted)' }}>暂无历史会话</p>
+              ) : (
+                historyList.map((h) => {
+                  const agentLabel = agentOptions.find((o) => o.value === h.agent_type)?.label ?? h.agent_type
+                  return (
+                    <div
+                      key={h.id}
+                      className="group flex items-start gap-2 px-4 py-2.5 cursor-pointer hover:bg-black/5"
+                      style={{
+                        background: h.id === sessionId ? 'var(--clay-primary-alpha-10)' : undefined,
+                      }}
+                      onClick={() => handleResumeSession(h.id)}
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: 'var(--clay-muted)' }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate" style={{ color: 'var(--clay-ink)' }}>
+                          {h.title || '未命名对话'}
+                        </p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-full"
+                            style={{ background: 'var(--clay-primary-alpha-10)', color: 'var(--clay-primary)' }}
+                          >
+                            {agentLabel}
+                          </span>
+                          <span className="text-[10px]" style={{ color: 'var(--clay-muted)' }}>
+                            {new Date(h.updated_at || h.created_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-black/10 flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteHistorySession(h.id) }}
+                      >
+                        <Trash2 className="h-3 w-3" style={{ color: 'var(--clay-muted)' }} />
+                      </button>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ─── main chat area ─── */}
+        <div className="flex-1 flex flex-col gap-0 overflow-hidden min-w-0 order-1">
         {/* Header */}
-        <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
+        <DialogHeader className="px-6 pt-6 pb-3 shrink-0" style={{ borderBottom: '1px solid var(--clay-hairline-soft)' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5 text-primary" />
-              <DialogTitle>{nodeTitle} — Deep Dive</DialogTitle>
+              <MessageCircle className="h-5 w-5" style={{ color: 'var(--clay-primary)' }} />
+              <DialogTitle className="text-title-md">{nodeTitle} — Deep Dive</DialogTitle>
             </div>
-            {sessionStarted && !completed && !readOnly && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleComplete}
-                disabled={completing}
-                className="ml-4"
-              >
-                {completing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                )}
-                结束对话
-              </Button>
+            <div className="flex items-center gap-1.5 ml-4">
+            {sessionStarted && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSummarize('extract-aspects')}
+                  title="用当前对话内容提取切面"
+                >
+                  {activeSummarizeModes.has('extract-aspects') ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5" />
+                  )}
+                  提取切面
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSummarize('feed')}
+                  title="用当前对话内容作为投喂数据"
+                >
+                  {activeSummarizeModes.has('feed') ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5" />
+                  )}
+                  投喂数据
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSummarize('aspect')}
+                  title="生成总结附件，标注时间"
+                >
+                  {activeSummarizeModes.has('aspect') ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5" />
+                  )}
+                  总结附件
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBridgeStart}
+                  disabled={bridgeStatus === 'pending'}
+                >
+                  {bridgeStatus === 'pending' ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5" />
+                  )}
+                  委托 Agent
+                </Button>
+              </>
             )}
+              <button
+                type="button"
+                onClick={() => setShowHistory(!showHistory)}
+                className="p-1.5 rounded hover:bg-black/5"
+                title="历史会话"
+              >
+                <History className="h-4 w-4" style={{ color: showHistory ? 'var(--clay-primary)' : 'var(--clay-muted)' }} />
+              </button>
+            </div>
           </div>
           <DialogDescription className="sr-only">
             与 AI 深入探讨节点「{nodeTitle}」
@@ -285,38 +534,31 @@ export function DeepDiveDialog({
         {/* Agent selector — only before conversation starts */}
         {!sessionStarted && !readOnly && (
           <div className="px-6 pb-3 shrink-0">
-            <p className="text-xs text-muted-foreground mb-2">选择 Agent 类型</p>
-            <div className="flex gap-2">
-              {AGENT_TYPES.map((agent) => (
-                <Button
-                  key={agent.key}
-                  variant={agentType === agent.key ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setAgentType(agent.key)}
-                  className="flex-1"
-                >
-                  <span className="font-medium">{agent.label}</span>
-                  <span className="ml-1 text-xs opacity-60">{agent.description}</span>
-                </Button>
-              ))}
-            </div>
+            <AgentSelector options={agentOptions} value={agentType} onChange={setAgentType} size="md" className="px-0 py-0" />
+          </div>
+        )}
+
+        {/* Thinking mode toggle */}
+        {!readOnly && (
+          <div className="px-6 pb-2 shrink-0">
+            <ThinkingToggle supported={thinkingSupported} enabled={useThinking} onChange={setUseThinking} />
           </div>
         )}
 
         {/* Read-only badge for historical sessions */}
         {readOnly && (
           <div className="px-6 pb-2 shrink-0">
-            <span className="inline-block text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+            <span className="clay-badge text-xs">
               历史对话 · 只读
             </span>
           </div>
         )}
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-3 space-y-3 min-h-0">
+        <div ref={scrollContainerRef} onScroll={handleScroll} className="relative flex-1 overflow-y-auto px-6 py-3 space-y-3 min-h-0">
           {messages.length === 0 && (
             <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm" style={{ color: 'var(--clay-muted)' }}>
                 {readOnly ? '该会话没有消息' : '开始对话，深入探索这个概念 ✨'}
               </p>
             </div>
@@ -326,7 +568,7 @@ export function DeepDiveDialog({
             if (message.role === 'system') {
               return (
                 <div key={message.id} className="flex justify-center">
-                  <p className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
+                  <p className="text-xs px-3 py-1 rounded-full" style={{ color: 'var(--clay-muted)', background: 'var(--clay-surface-soft)' }}>
                     {message.content}
                   </p>
                 </div>
@@ -341,29 +583,20 @@ export function DeepDiveDialog({
                 className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                    isUser
-                      ? 'bg-primary/15 text-foreground rounded-br-md'
-                      : 'bg-muted text-foreground rounded-bl-md'
-                  }`}
+                  className="max-w-[80%] px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
+                  style={{
+                    borderRadius: isUser ? 'var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-xl)' : 'var(--radius-xl) var(--radius-xl) var(--radius-xl) var(--radius-sm)',
+                    background: isUser ? 'var(--clay-primary)' : 'var(--clay-surface-card)',
+                    color: isUser ? 'var(--clay-on-primary)' : 'var(--clay-ink)',
+                  }}
                 >
-                  {message.content}
-                  {isStreaming && (
-                    <span
-                      className="inline-block ml-0.5 align-baseline"
-                      style={{
-                        animation: 'deepdive-cursor-blink 1s steps(2) infinite',
-                      }}
-                    >
-                      ▊
-                    </span>
+                  {/* 用户消息：纯文本；AI 消息：始终 Markdown 渲染（含流式） */}
+                  {isUser ? (
+                    message.content
+                  ) : (
+                    <MarkdownRenderer content={message.content} streaming={isStreaming} />
                   )}
-                  <style>{`
-                    @keyframes deepdive-cursor-blink {
-                      0%, 100% { opacity: 1; }
-                      50% { opacity: 0; }
-                    }
-                  `}</style>
+
                 </div>
               </div>
             )
@@ -371,8 +604,48 @@ export function DeepDiveDialog({
 
           {sending && (
             <div className="flex justify-start">
-              <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-2.5">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <div className="px-4 py-2.5" style={{ background: 'var(--clay-surface-card)', borderRadius: 'var(--radius-xl) var(--radius-xl) var(--radius-xl) var(--radius-sm)' }}>
+                <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--clay-muted)' }} />
+              </div>
+            </div>
+          )}
+
+          {/* Bridge mode status */}
+          {bridgeStatus === 'pending' && (
+            <div className="flex justify-center">
+              <div className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-lg" style={{ background: 'var(--clay-surface-soft)', color: 'var(--clay-muted)' }}>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>已委托外部 Agent，等待结果...</span>
+                <Button variant="ghost" size="sm" onClick={handleBridgeCancel} className="ml-2 h-6 px-2">
+                  <XCircle className="h-3.5 w-3.5 mr-1" />
+                  取消委托
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {bridgeStatus === 'done' && bridgeResult && (
+            <div className="flex justify-start">
+              <div
+                className="max-w-[80%] px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
+                style={{
+                  borderRadius: 'var(--radius-xl) var(--radius-xl) var(--radius-xl) var(--radius-sm)',
+                  background: 'var(--clay-surface-card)',
+                  color: 'var(--clay-ink)',
+                  border: '1px solid var(--clay-primary)',
+                }}
+              >
+                <p className="text-xs font-medium mb-1" style={{ color: 'var(--clay-primary)' }}>外部 Agent 结果</p>
+                {bridgeResult}
+              </div>
+            </div>
+          )}
+
+          {bridgeStatus === 'error' && bridgeError && (
+            <div className="flex justify-center">
+              <div className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg" style={{ background: 'var(--clay-surface-soft)', color: 'var(--clay-error, #ef4444)' }}>
+                <XCircle className="h-4 w-4" />
+                <span>{bridgeError}</span>
               </div>
             </div>
           )}
@@ -380,79 +653,22 @@ export function DeepDiveDialog({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Completion banner */}
-        {completed && (
-          <div className="px-6 py-3 border-t border-border bg-muted/30 shrink-0">
-            <div className="flex items-center gap-2 text-sm">
-              <CheckCircle2 className="h-4 w-4 text-[hsl(var(--success))]" />
-              <span>
-                对话已结束，创建了{' '}
-                <strong className="text-foreground">{suggestionsCreated}</strong> 条建议
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              前往 Inbox 查看并确认建议
-            </p>
-            <div className="flex items-center gap-2 mt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleSummarize('feed')}
-                disabled={summarizing}
-              >
-                {summarizing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                ) : (
-                  <FileText className="h-3.5 w-3.5 mr-1" />
-                )}
-                作为投喂数据
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleSummarize('aspect')}
-                disabled={summarizing}
-              >
-                {summarizing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                ) : (
-                  <FileText className="h-3.5 w-3.5 mr-1" />
-                )}
-                附加到节点
-              </Button>
-            </div>
-          </div>
-        )}
+        {/* scroll-to-bottom button — 放在滚动容器外部 */}
+        <ScrollToBottomButton visible={showScrollButton} onClick={scrollToBottom} />
 
         {/* Input area */}
-        {!completed && !readOnly && (
-          <div className="px-6 py-3 border-t border-border shrink-0">
-            <div className="flex items-end gap-2">
-              <Textarea
-                ref={textareaRef}
-                value={inputValue}
-                onChange={(event) => setInputValue(event.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="输入你的想法… (Shift+Enter 换行)"
-                disabled={sending}
-                rows={2}
-                className="flex-1 resize-none bg-transparent text-sm min-h-[44px] max-h-[120px]"
-              />
-              <Button
-                size="icon"
-                onClick={handleSend}
-                disabled={!inputValue.trim() || sending}
-                className="shrink-0"
-              >
-                {sending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </div>
+        {!readOnly && (
+          <ChatInput
+            textareaRef={textareaRef}
+            value={inputValue}
+            onChange={setInputValue}
+            onSend={handleSend}
+            sending={sending}
+            placeholder="输入你的想法… (Shift+Enter 换行)"
+            rows={2}
+          />
         )}
+        </div>
       </DialogContent>
     </Dialog>
   )

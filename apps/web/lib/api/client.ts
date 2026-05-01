@@ -13,6 +13,9 @@ export interface DeepDiveSession {
   node_id: string
   agent_type: string
   status: 'active' | 'completed'
+  title: string | null
+  provider_id: string | null
+  model: string | null
   messages: DeepDiveMessage[]
   created_at: string
   completed_at?: string
@@ -40,7 +43,7 @@ export const api = {
       handle<Node>(r),
     ),
   deleteNode: (id: string) =>
-    fetch(`/api/nodes/${id}`, { method: 'DELETE' }).then((r) => handle<{ id: string }>(r)),
+    fetch(`/api/nodes/${id}`, { method: 'DELETE' }).then((r) => handle<{ id: string; operation_log_id: string }>(r)),
   listEdges: () => fetch('/api/edges').then((r) => handle<Edge[]>(r)),
   createEdge: (input: CreateEdgeInput) =>
     fetch('/api/edges', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input) }).then((r) =>
@@ -305,4 +308,63 @@ export const api = {
     fetch('/api/safety/kill-all', { method: 'POST' }).then((r) =>
       handle<{ disabled: true }>(r),
     ),
+
+  // Data Import
+  importData: (data: { nodes?: unknown[]; edges?: unknown[]; aspects?: unknown[] }) =>
+    fetch('/api/data/import', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(data) }).then((r) =>
+      handle<{ imported: { nodes: number; edges: number; aspects: number; skipped: number; errors: number }; message: string }>(r),
+    ),
+
+  // Undo
+  listUndoableOps: () =>
+    fetch('/api/data/undo').then((r) =>
+      handle<Array<{ id: string; operation: string; affected_ids: unknown; user_note: string | null; created_at: string }>>(r),
+    ),
+  undoOperation: (operationLogId: string) =>
+    fetch('/api/data/undo', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ operation_log_id: operationLogId }) }).then((r) =>
+      handle<{ undone: boolean; operation: string }>(r),
+    ),
+
+  // --- Memory ---
+  getMemory: (type: 'profile' | 'global') =>
+    fetch(`/api/memory?type=${type}`).then((r) =>
+      handle<{ content: string }>(r),
+    ),
+
+  updateMemory: (type: 'profile' | 'global', content: string) =>
+    fetch('/api/memory', {
+      method: 'PATCH',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ type, content }),
+    }).then((r) => handle<{ ok: boolean }>(r)),
+
+  // --- Agents ---
+  listAgents: () =>
+    fetch('/api/agents').then((r) =>
+      handle<{ agents: Array<{ id: string; name: string; description: string; filePath: string }> }>(r),
+    ),
+
+  getAgent: (agentId: string) =>
+    fetch(`/api/agents/${agentId}`).then((r) =>
+      handle<{ id: string; name: string; content: string }>(r),
+    ),
+
+  updateAgent: (agentId: string, content: string) =>
+    fetch(`/api/agents/${agentId}`, {
+      method: 'PUT',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ content }),
+    }).then((r) => handle<{ ok: boolean }>(r)),
+
+  deleteAgent: (agentId: string) =>
+    fetch(`/api/agents/${agentId}`, { method: 'DELETE' }).then((r) =>
+      handle<{ ok: boolean }>(r),
+    ),
+
+  createAgent: (id: string, content: string) =>
+    fetch('/api/agents/create', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ id, content }),
+    }).then((r) => handle<{ ok: boolean; id: string }>(r)),
 }

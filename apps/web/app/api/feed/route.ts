@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@galaxy/db'
-import { feedItems, settings } from '@galaxy/db/schema'
+import { feedItems, settings, operationLogs } from '@galaxy/db/schema'
 import { generateId, nowIso } from '@galaxy/shared'
 import { eq } from 'drizzle-orm'
 import { ensureDb } from '@/lib/api/ensure-db'
@@ -116,6 +116,17 @@ export async function POST(req: NextRequest) {
     const { registry, defaultProvider, defaultModel } = buildRegistry()
     const channel = new DirectChannel(registry, resolvePromptsDir())
     const result = await channel.extractFromFeed(feedId, parsedContent, defaultProvider, defaultModel)
+
+    db.insert(operationLogs)
+      .values({
+        id: generateId('ol'),
+        operation: 'feed_content',
+        affected_ids: JSON.stringify([feedId]),
+        payload_snapshot: null,
+        user_note: `投喂内容 (${parsed.data.type})，生成 ${result.suggestionsCreated} 条建议`,
+        created_at: now,
+      })
+      .run()
 
     return NextResponse.json({
       data: {

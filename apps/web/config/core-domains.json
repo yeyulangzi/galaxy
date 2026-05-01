@@ -1,0 +1,14 @@
+{
+  "coreDomains": [
+    "互联网/产品设计",
+    "互联网/运营体系",
+    "互联网/用户与社群",
+    "互联网/数据与增长",
+    "互联网/市场与商业",
+    "互联网/平台与组织"
+  ],
+  "channelTargetStatus": {
+    "core": "mastered",
+    "light": "linked"
+  }
+}

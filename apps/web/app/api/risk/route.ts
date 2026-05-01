@@ -1,8 +1,8 @@
 
 import { NextResponse } from 'next/server'
 import { getDb } from '@galaxy/db'
-import { suggestions, settings, nodes } from '@galaxy/db/schema'
-import { eq, and, gte, sql } from 'drizzle-orm'
+import { suggestions, settings, nodes, feedbackStats, userPreferences } from '@galaxy/db/schema'
+import { eq, and, gte, sql, inArray } from 'drizzle-orm'
 import { ensureDb } from '@/lib/api/ensure-db'
 
 export const dynamic = 'force-dynamic'
@@ -98,6 +98,94 @@ export async function GET() {
     }
   }
 
+  // 5. 校准曲线（calibration）— 最近 90 天已决定的 suggestions
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+  const decidedStatuses = ['accepted', 'rejected', 'accepted_modified'] as const
+
+  const decidedRows = db
+    .select({
+      confidence: suggestions.confidence,
+      status: suggestions.status,
+    })
+    .from(suggestions)
+    .where(
+      and(
+        gte(suggestions.decided_at, ninetyDaysAgo),
+        inArray(suggestions.status, [...decidedStatuses]),
+      ),
+    )
+    .all()
+
+  const bucketBounds = [
+    { min: 0, max: 0.2, midpoint: 0.1 },
+    { min: 0.2, max: 0.4, midpoint: 0.3 },
+    { min: 0.4, max: 0.6, midpoint: 0.5 },
+    { min: 0.6, max: 0.8, midpoint: 0.7 },
+    { min: 0.8, max: 1.0, midpoint: 0.9 },
+  ]
+
+  const calibration = bucketBounds.map((bucket) => {
+    const inBucket = decidedRows.filter(
+      (row) => row.confidence >= bucket.min && row.confidence < (bucket.max === 1.0 ? 1.01 : bucket.max),
+    )
+    const acceptedInBucket = inBucket.filter(
+      (row) => row.status === 'accepted' || row.status === 'accepted_modified',
+    ).length
+    const count = inBucket.length
+    const actualRate = count > 0 ? acceptedInBucket / count : 0
+
+    return {
+      range: `[${bucket.min}-${bucket.max})`,
+      count,
+      rawConfidence: bucket.midpoint,
+      actualRate: Math.round(actualRate * 1000) / 1000,
+    }
+  })
+
+  const calibrationErrors = calibration
+    .filter((b) => b.count > 0)
+    .map((b) => Math.abs(b.rawConfidence - b.actualRate))
+  const overallCalibrationError =
+    calibrationErrors.length > 0
+      ? Math.round((calibrationErrors.reduce((sum, e) => sum + e, 0) / calibrationErrors.length) * 1000) / 1000
+      : 0
+
+  // 6. 用户偏好（preferences）
+  const preferenceRows = db.select().from(userPreferences).all()
+  const preferences: Record<string, unknown> = {}
+  for (const row of preferenceRows) {
+    try {
+      preferences[row.preference_key] = JSON.parse(row.preference_value)
+    } catch {
+      preferences[row.preference_key] = row.preference_value
+    }
+  }
+
+  // 7. 按类型趋势（trendByType）
+  const statsRows = db.select().from(feedbackStats).all()
+  const typeAggregation = new Map<string, { totalCount: number; acceptedCount: number }>()
+  for (const row of statsRows) {
+    const existing = typeAggregation.get(row.suggestion_type)
+    if (existing) {
+      existing.totalCount += row.total_count
+      existing.acceptedCount += row.accepted_count
+    } else {
+      typeAggregation.set(row.suggestion_type, {
+        totalCount: row.total_count,
+        acceptedCount: row.accepted_count,
+      })
+    }
+  }
+
+  const trendByType: Array<{ type: string; acceptanceRate: number; count: number }> = []
+  for (const [type, stats] of typeAggregation) {
+    trendByType.push({
+      type,
+      acceptanceRate: stats.totalCount > 0 ? Math.round((stats.acceptedCount / stats.totalCount) * 100) / 100 : 0,
+      count: stats.totalCount,
+    })
+  }
+
   return NextResponse.json({
     data: {
       acceptance: { accepted: recentAccepted, total: recentTotal, rate: Math.round(acceptanceRate * 100) / 100 },
@@ -109,6 +197,13 @@ export async function GET() {
         usageRate: Math.round(budgetUsageRate * 100) / 100,
       },
       duplicateNodes: duplicatePairs,
+      calibration: {
+        buckets: calibration,
+        overallCalibrationError,
+        sampleSize: decidedRows.length,
+      },
+      preferences,
+      trendByType,
     },
   })
 }

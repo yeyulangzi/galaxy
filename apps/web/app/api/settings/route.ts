@@ -58,6 +58,7 @@ export async function PATCH(req: NextRequest) {
     'enable_monthly_budget', 'monthly_budget_usd',
     'qoder_bridge_dir', 'bridge_timeout_minutes',
     'proactive_scan_cron', 'proactive_scan_max_suggestions', 'proactive_scan_strategies',
+    'enable_thinking', 'thinking_budget_tokens',
   ] as const
 
   const patch: Record<string, unknown> = { updated_at: nowIso() }

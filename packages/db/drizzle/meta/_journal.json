@@ -8,6 +8,41 @@
       "when": 1777268153740,
       "tag": "0000_certain_mojo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1777446467080,
+      "tag": "0001_fantastic_zeigeist",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1777458971512,
+      "tag": "0002_swift_diamondback",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1777710660000,
+      "tag": "0003_add_session_title",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1777797000000,
+      "tag": "0004_add_thinking_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1777797060000,
+      "tag": "0005_add_thinking_budget",
+      "breakpoints": true
     }
   ]
 }

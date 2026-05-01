@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
 
   const db = getDb()
   const now = nowIso()
-  const sessionId = generateId('dd')
+  const sessionId = generateId('s')
 
   db.insert(deepDiveSessions)
     .values({

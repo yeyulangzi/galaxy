@@ -3,6 +3,7 @@ import { getDb } from '@galaxy/db'
 import { nodes, edges, aspects, suggestions } from '@galaxy/db/schema'
 import { generateId, nowIso } from '@galaxy/shared'
 import type { ToolDefinition, ToolCall } from '../providers/types'
+import { DOMAIN_RULE_DESCRIPTION } from './schemas'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,16 +20,6 @@ export interface ToolExecResult {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function simpleSlugify(title: string): string {
-  return title
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
 
 const WRITE_TOOLS = new Set([
   'create_node',
@@ -138,7 +129,7 @@ const createNodeTool: ToolDefinition = {
     properties: {
       title: { type: 'string', description: 'Node title' },
       summary: { type: 'string', description: 'Node summary' },
-      domain: { type: 'string', description: 'Knowledge domain' },
+      domain: { type: 'string', description: DOMAIN_RULE_DESCRIPTION },
       node_type: {
         type: 'string',
         enum: ['concept', 'claim', 'case', 'resource'],
@@ -161,7 +152,7 @@ const createNodeTool: ToolDefinition = {
         description: 'Optional edges to create along with the node',
       },
     },
-    required: ['title', 'node_type'],
+    required: ['title', 'summary', 'domain', 'node_type'],
   },
 }
 
@@ -175,7 +166,7 @@ const updateNodeTool: ToolDefinition = {
       node_id: { type: 'string', description: 'ID of the node to update' },
       title: { type: 'string', description: 'New title' },
       summary: { type: 'string', description: 'New summary' },
-      domain: { type: 'string', description: 'New domain' },
+      domain: { type: 'string', description: DOMAIN_RULE_DESCRIPTION },
       node_type: {
         type: 'string',
         enum: ['concept', 'claim', 'case', 'resource'],
@@ -582,6 +573,8 @@ function createSuggestion(params: WriteSuggestionParams): string {
   const suggestionId = generateId('s')
   const now = nowIso()
 
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+
   db.insert(suggestions)
     .values({
       id: suggestionId,
@@ -590,9 +583,10 @@ function createSuggestion(params: WriteSuggestionParams): string {
       source_ref_id: params.sessionId,
       payload: JSON.stringify(params.payload),
       rationale: params.rationale,
-      confidence: 0.9,
+      confidence: 0.85,
       status: 'pending',
       created_at: now,
+      expires_at: expiresAt,
       provider_id: params.providerId,
       model: params.model,
     })

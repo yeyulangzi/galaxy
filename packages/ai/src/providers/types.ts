@@ -2,6 +2,7 @@ export interface ModelInfo {
   id: string
   displayName: string
   maxContextTokens: number
+  maxOutputTokens: number
   inputPricePer1kTokens: number
   outputPricePer1kTokens: number
 }
@@ -27,6 +28,11 @@ export interface ToolCall {
   arguments: Record<string, unknown>
 }
 
+export interface ThinkingConfig {
+  enabled: boolean
+  budgetTokens?: number
+}
+
 export interface LLMRequest {
   model: string
   messages: Message[]
@@ -34,6 +40,7 @@ export interface LLMRequest {
   responseFormat?: { type: 'json_object' }
   maxTokens?: number
   temperature?: number
+  thinking?: ThinkingConfig
 }
 
 export interface LLMResponse {

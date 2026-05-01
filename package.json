@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "typecheck": "pnpm -r typecheck",
     "db:generate": "pnpm --filter @galaxy/db db:generate",
-    "db:studio": "pnpm --filter @galaxy/db db:studio"
+    "db:studio": "pnpm --filter @galaxy/db db:studio",
+    "bridge:consumer": "tsx scripts/bridge-consumer.ts"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -21,12 +21,44 @@ interface Props {
 }
 
 export function NewNodeDialog({ open, onOpenChange }: Props) {
-  const { addNode } = useGraphStore()
+  const { addNode, nodes } = useGraphStore()
   const [title, setTitle] = useState('')
   const [domain, setDomain] = useState('')
+  const [domainOpen, setDomainOpen] = useState(false)
   const [summary, setSummary] = useState('')
   const [isSeed, setIsSeed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const domainInputRef = useRef<HTMLInputElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // 从现有节点中提取去重的领域列表
+  const existingDomains = useMemo(() => {
+    const domains = nodes
+      .map((n) => n.domain)
+      .filter((d): d is string => !!d && d.trim().length > 0)
+    return [...new Set(domains)].sort()
+  }, [nodes])
+
+  // 根据输入过滤领域选项
+  const filteredDomains = useMemo(() => {
+    if (!domain.trim()) return existingDomains
+    const keyword = domain.trim().toLowerCase()
+    return existingDomains.filter((d) => d.toLowerCase().includes(keyword))
+  }, [domain, existingDomains])
+
+  // 点击外部关闭下拉
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
+        domainInputRef.current && !domainInputRef.current.contains(e.target as Node)
+      ) {
+        setDomainOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const reset = () => {
     setTitle('')
@@ -44,9 +76,11 @@ export function NewNodeDialog({ open, onOpenChange }: Props) {
     try {
       await addNode({
         title: title.trim(),
-        domain: domain.trim() || null,
-        summary: summary.trim() || null,
+        domain: domain.trim(),
+        summary: summary.trim(),
         is_seed: isSeed,
+        node_type: 'concept',
+        channel: 'light',
       })
       toast.success('已创建节点')
       reset()
@@ -76,14 +110,45 @@ export function NewNodeDialog({ open, onOpenChange }: Props) {
               placeholder="如：前置仓"
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 relative">
             <Label htmlFor="new-domain">领域</Label>
             <Input
+              ref={domainInputRef}
               id="new-domain"
               value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              placeholder="如：即时零售"
+              onChange={(e) => {
+                setDomain(e.target.value)
+                setDomainOpen(true)
+              }}
+              onFocus={() => setDomainOpen(true)}
+              placeholder="选择或输入新领域"
+              autoComplete="off"
             />
+            {domainOpen && filteredDomains.length > 0 && (
+              <div
+                ref={dropdownRef}
+                className="absolute z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-md border bg-popover shadow-md"
+              >
+                {filteredDomains.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-accent truncate"
+                    onClick={() => {
+                      setDomain(d)
+                      setDomainOpen(false)
+                    }}
+                  >
+                    {d}
+                  </button>
+                ))}
+                {domain.trim() && !existingDomains.includes(domain.trim()) && (
+                  <div className="px-3 py-1.5 text-xs" style={{ color: 'var(--clay-muted)' }}>
+                    回车创建新领域「{domain.trim()}」
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div className="space-y-1">
             <Label htmlFor="new-summary">摘要</Label>

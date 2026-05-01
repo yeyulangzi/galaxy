@@ -5,101 +5,28 @@ import {
   deepDiveMessages,
   nodes,
   aspects,
-  settings,
   feedItems,
+  nodeAttachments,
 } from '@galaxy/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { generateId, nowIso } from '@galaxy/shared'
 import {
-  decrypt,
-  ProviderRegistry,
   summarizeConversation,
   extractAspectsFromConversation,
   loadAspectTemplates,
   DirectChannel,
 } from '@galaxy/ai'
 import { ensureDb } from '@/lib/api/ensure-db'
+import { buildRegistry, resolveDataDir } from '@/lib/api/build-registry'
 import path from 'node:path'
 import fs from 'node:fs'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-function buildRegistry(): {
-  registry: ProviderRegistry
-  defaultProviderId: string
-  defaultModel: string
-} {
-  const db = getDb()
-  const row = db.select().from(settings).where(eq(settings.id, 1)).get()
-  if (!row) throw new Error('Settings not initialized')
-
-  const registry = new ProviderRegistry()
-  const creds = (row.provider_credentials ?? {}) as Record<
-    string,
-    { api_key?: string; base_url?: string }
-  >
-
-  for (const [providerId, value] of Object.entries(creds)) {
-    const encryptedKey = value?.api_key ?? ''
-    if (!encryptedKey) continue
-    let apiKey: string
-    try {
-      apiKey = decrypt(encryptedKey)
-    } catch {
-      continue
-    }
-    registry.registerBuiltIn(
-      providerId as Parameters<ProviderRegistry['registerBuiltIn']>[0],
-      { apiKey, baseUrl: value?.base_url ?? (row.default_base_url as string | undefined) },
-    )
-  }
-
-  return {
-    registry,
-    defaultProviderId: (row.default_provider as string) ?? '',
-    defaultModel: (row.default_model as string) ?? '',
-  }
-}
-
-function resolvePromptsDir(): string {
-  const candidates = [
-    path.resolve(process.cwd(), 'data', 'prompts'),
-    path.resolve(process.cwd(), '..', '..', 'data', 'prompts'),
-  ]
-  for (const dir of candidates) {
-    if (fs.existsSync(dir)) return dir
-  }
-  throw new Error(
-    `Cannot find data/prompts folder. Tried: ${candidates.join(', ')}`,
-  )
-}
-
-function resolveAspectsDir(): string {
-  const candidates = [
-    path.resolve(process.cwd(), 'data', 'aspects'),
-    path.resolve(process.cwd(), '..', '..', 'data', 'aspects'),
-  ]
-  for (const dir of candidates) {
-    if (fs.existsSync(dir)) return dir
-  }
-  throw new Error(
-    `Cannot find data/aspects folder. Tried: ${candidates.join(', ')}`,
-  )
-}
-
 function resolveSummariesDir(nodeId: string): string {
-  const candidates = [
-    path.resolve(process.cwd(), 'data', 'summaries', nodeId),
-    path.resolve(process.cwd(), '..', '..', 'data', 'summaries', nodeId),
-  ]
-  // Return the first candidate whose parent exists, or the first one to create
-  for (const dir of candidates) {
-    const parent = path.dirname(dir)
-    const grandparent = path.dirname(parent)
-    if (fs.existsSync(grandparent)) return dir
-  }
-  return candidates[0]!
+  const summariesBase = resolveDataDir('summaries')
+  return path.join(summariesBase, nodeId)
 }
 
 export async function POST(
@@ -163,18 +90,50 @@ export async function POST(
   const model = session.model ?? defaultModel
   const provider = registry.getOrThrow(providerId)
 
-  // 调用 LLM 生成总结
   const conversationForSummary = messages.map((m) => ({
     role: m.role,
     content: m.content,
   }))
 
-  const summary = await summarizeConversation(
-    node.title,
-    conversationForSummary,
-    provider,
-    model,
-  )
+  // mode === 'extract-aspects' — 不需要先做总结，直接异步提取维度
+  if (mode === 'extract-aspects') {
+    extractAspectsAsync(
+      session.node_id,
+      session.id,
+      node.title,
+      conversationForSummary,
+      provider,
+      model,
+    ).catch((err) =>
+      console.error('[summarize] async extract-aspects failed:', err),
+    )
+
+    return NextResponse.json({
+      data: {
+        mode: 'extract-aspects',
+        async: true,
+      },
+    })
+  }
+
+  // feed 和 aspect 模式需要先生成总结
+  let summary: Awaited<ReturnType<typeof summarizeConversation>>
+  try {
+    summary = await summarizeConversation(
+      node.title,
+      conversationForSummary,
+      provider,
+      model,
+    )
+  } catch (summarizeError: unknown) {
+    const errorMessage =
+      summarizeError instanceof Error ? summarizeError.message : String(summarizeError)
+    console.error('[summarize] summarizeConversation failed:', errorMessage)
+    return NextResponse.json(
+      { error: `总结生成失败: ${errorMessage}` },
+      { status: 500 },
+    )
+  }
 
   if (mode === 'feed') {
     // 将总结内容作为文本投喂，走 extractFromFeed 流程
@@ -192,7 +151,7 @@ export async function POST(
       .run()
 
     try {
-      const promptsDir = resolvePromptsDir()
+      const promptsDir = resolveDataDir('prompts')
       const channel = new DirectChannel(registry, promptsDir)
       const feedResult = await channel.extractFromFeed(
         feedId,
@@ -219,69 +178,6 @@ export async function POST(
     }
   }
 
-  // mode === 'extract-aspects'
-  if (mode === 'extract-aspects') {
-    const aspectsTemplatesDir = resolveAspectsDir()
-    const templates = loadAspectTemplates(aspectsTemplatesDir)
-    const extractResult = await extractAspectsFromConversation(
-      node.title,
-      conversationForSummary,
-      templates,
-      provider,
-      model,
-    )
-
-    const now = nowIso()
-    let aspectsUpdated = 0
-
-    for (const extracted of extractResult.aspects) {
-      const existing = db
-        .select()
-        .from(aspects)
-        .where(
-          and(
-            eq(aspects.node_id, session.node_id),
-            eq(aspects.title, extracted.title),
-          ),
-        )
-        .get()
-
-      if (existing) {
-        const updatedContent = existing.content
-          ? `${existing.content}\n\n---\n\n${extracted.content}`
-          : extracted.content
-        db.update(aspects)
-          .set({ content: updatedContent, updated_at: now })
-          .where(eq(aspects.id, existing.id))
-          .run()
-      } else {
-        const template = templates.find((t) => t.title === extracted.title)
-        db.insert(aspects)
-          .values({
-            id: generateId('a'),
-            node_id: session.node_id,
-            title: extracted.title,
-            content: extracted.content,
-            source_type: 'dialogue',
-            source_id: session.id,
-            order: template?.order ?? 99,
-            created_at: now,
-            updated_at: now,
-            created_by: 'ai_deepdive',
-          })
-          .run()
-      }
-      aspectsUpdated++
-    }
-
-    return NextResponse.json({
-      data: {
-        mode: 'extract-aspects',
-        aspectsUpdated,
-      },
-    })
-  }
-
   // mode === 'aspect' — save summary as .md file attachment
   const now = nowIso()
   const timestamp = now.replace(/[:.]/g, '-').slice(0, 19)
@@ -297,6 +193,19 @@ export async function POST(
   const fileContent = `# ${summary.title}\n\n> 节点：${node.title} | 生成于 ${now}\n\n${summary.markdown}`
   fs.writeFileSync(filePath, fileContent, 'utf-8')
 
+  // 同时写入 nodeAttachments 表，让总结出现在节点附件列表中
+  const attachmentId = generateId('a')
+  db.insert(nodeAttachments)
+    .values({
+      id: attachmentId,
+      node_id: session.node_id,
+      type: 'md',
+      title: `📝 ${summary.title ?? fileName}`,
+      content_or_url: fileContent,
+      created_at: now,
+    })
+    .run()
+
   // Return a relative path for the frontend to use
   const relativePath = `summaries/${session.node_id}/${fileName}`
 
@@ -306,6 +215,79 @@ export async function POST(
       summary: summary.markdown,
       fileName,
       filePath: relativePath,
+      attachmentId,
     },
   })
+}
+
+/** 后台异步提取维度，不阻塞 HTTP 响应 */
+async function extractAspectsAsync(
+  nodeId: string,
+  sessionId: string,
+  nodeTitle: string,
+  conversation: Array<{ role: string; content: string }>,
+  provider: ReturnType<import('@galaxy/ai').ProviderRegistry['getOrThrow']>,
+  model: string,
+) {
+  const db = getDb()
+  const aspectsTemplatesDir = resolveDataDir('aspects')
+  const templates = loadAspectTemplates(aspectsTemplatesDir)
+
+  const extractResult = await extractAspectsFromConversation(
+    nodeTitle,
+    conversation,
+    templates,
+    provider,
+    model,
+  )
+
+  const now = nowIso()
+
+  for (const extracted of extractResult.aspects) {
+    const existing = db
+      .select()
+      .from(aspects)
+      .where(
+        and(
+          eq(aspects.node_id, nodeId),
+          eq(aspects.title, extracted.title),
+        ),
+      )
+      .get()
+
+    if (existing) {
+      const updatedContent = existing.content
+        ? `${existing.content}\n\n---\n\n${extracted.content}`
+        : extracted.content
+      db.update(aspects)
+        .set({ content: updatedContent, updated_at: now })
+        .where(eq(aspects.id, existing.id))
+        .run()
+    } else {
+      const template = templates.find((t) => t.title === extracted.title)
+      if (!template) {
+        console.warn(`[extract-aspects] Skipping unknown aspect title: "${extracted.title}"`)
+        continue
+      }
+      db.insert(aspects)
+        .values({
+          id: generateId('a'),
+          node_id: nodeId,
+          template_key: template.key,
+          title: extracted.title,
+          content: extracted.content,
+          source_type: 'dialogue',
+          source_id: sessionId,
+          order: template.order,
+          created_at: now,
+          updated_at: now,
+          created_by: 'ai_deepdive',
+        })
+        .run()
+    }
+  }
+
+  console.log(
+    `[summarize] async extract-aspects done for node ${nodeId}: ${extractResult.aspects.length} aspects`,
+  )
 }

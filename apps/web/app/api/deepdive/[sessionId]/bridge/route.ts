@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'node:fs'
 import path from 'node:path'
+import { homedir } from 'node:os'
 import { getDb } from '@galaxy/db'
 import { deepDiveSessions, deepDiveMessages, settings, nodes } from '@galaxy/db/schema'
 import { eq } from 'drizzle-orm'
 import { generateId, nowIso } from '@galaxy/shared'
-import { createBridgeTask, readBridgeResult, cancelBridgeTask } from '@galaxy/ai'
+import { createBridgeTask, readBridgeResult, cancelBridgeTask, archiveBridgeTask } from '@galaxy/ai'
 import { ensureDb } from '@/lib/api/ensure-db'
+
+function resolveBridgeDir(raw: string): string {
+  return raw.replace(/^~/, homedir())
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -32,13 +37,14 @@ export async function POST(
   }
 
   const settingsRow = db.select().from(settings).get()
-  const bridgeDir = settingsRow?.qoder_bridge_dir
-  if (!bridgeDir) {
+  const rawBridgeDir = settingsRow?.qoder_bridge_dir
+  if (!rawBridgeDir) {
     return NextResponse.json(
-      { error: 'qoder_bridge_dir is not configured in settings' },
+      { error: '请先在设置中配置「外部 Agent 代理」的任务交换目录' },
       { status: 400 },
     )
   }
+  const bridgeDir = resolveBridgeDir(rawBridgeDir)
 
   const timeoutMinutes = settingsRow?.bridge_timeout_minutes ?? 30
 
@@ -55,7 +61,7 @@ export async function POST(
     .orderBy(deepDiveMessages.created_at)
     .all()
 
-  const taskId = generateId('bridge')
+  const taskId = generateId('d')
 
   const taskPath = createBridgeTask(bridgeDir, {
     task_id: taskId,
@@ -117,19 +123,22 @@ export async function GET(
   }
 
   const settingsRow = db.select().from(settings).get()
-  const bridgeDir = settingsRow?.qoder_bridge_dir
-  if (!bridgeDir) {
+  const rawDir = settingsRow?.qoder_bridge_dir
+  if (!rawDir) {
     return NextResponse.json(
-      { error: 'qoder_bridge_dir is not configured in settings' },
+      { error: '请先在设置中配置「外部 Agent 代理」的任务交换目录' },
       { status: 400 },
     )
   }
+  const bridgeDir = resolveBridgeDir(rawDir)
 
   const taskFileName = path.basename(session.bridge_task_path)
   const resultPath = path.join(bridgeDir, 'done', taskFileName)
 
   if (fs.existsSync(resultPath)) {
     const result = readBridgeResult(resultPath)
+    // 归档已读取的结果文件，失败不影响响应
+    try { archiveBridgeTask(resultPath, bridgeDir) } catch (e) { console.error(e) }
     return NextResponse.json({ data: { status: 'done', result } })
   }
 
@@ -165,13 +174,14 @@ export async function DELETE(
   }
 
   const settingsRow = db.select().from(settings).get()
-  const bridgeDir = settingsRow?.qoder_bridge_dir
-  if (!bridgeDir) {
+  const rawBDir = settingsRow?.qoder_bridge_dir
+  if (!rawBDir) {
     return NextResponse.json(
-      { error: 'qoder_bridge_dir is not configured in settings' },
+      { error: '请先在设置中配置「外部 Agent 代理」的任务交换目录' },
       { status: 400 },
     )
   }
+  const bridgeDir = resolveBridgeDir(rawBDir)
 
   cancelBridgeTask(session.bridge_task_path, bridgeDir)
 

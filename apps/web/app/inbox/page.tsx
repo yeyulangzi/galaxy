@@ -21,7 +21,7 @@ export default function InboxPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
 
   useEffect(() => {
-    loadInbox({ status: 'pending' })
+    loadInbox({ status: 'pending', limit: '500' })
   }, [loadInbox])
 
   const handleAccept = useCallback(async (id: string) => {
@@ -73,11 +73,11 @@ export default function InboxPage() {
   return (
     <>
       <NavBar />
-      <div className="mx-auto max-w-3xl px-6 py-6 animate-fade-in">
+      <div className="mx-auto max-w-5xl px-6 py-8 animate-fade-in">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">待审队列</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{total} 条待处理建议</p>
+            <h1 className="text-display-sm">待审队列</h1>
+            <p className="mt-1 text-body-md" style={{ color: 'var(--clay-muted)' }}>{total} 条待处理建议</p>
           </div>
           <div className="flex gap-2">
             {selectedIds.size > 0 ? (
@@ -85,23 +85,25 @@ export default function InboxPage() {
                 <Button
                   size="sm"
                   onClick={() => batchConfirm('accept').then(() => toast.success('批量接受完成'))}
-                  className="h-8 bg-emerald-600 text-white hover:bg-emerald-700"
+                  className="h-8 rounded-[var(--radius-md)]"
+                  style={{ background: 'var(--clay-primary)', color: 'var(--clay-on-primary)' }}
                 >
                   接受 {selectedIds.size} 条
                 </Button>
                 <Button
                   size="sm"
                   onClick={() => batchConfirm('reject').then(() => toast.success('批量拒绝完成'))}
-                  className="h-8 bg-red-600/80 text-white hover:bg-red-600"
+                  className="h-8 rounded-[var(--radius-md)]"
+                  style={{ background: 'var(--clay-coral)', color: 'var(--clay-on-primary)' }}
                 >
                   拒绝
                 </Button>
-                <button onClick={clearSelection} className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                <button onClick={clearSelection} className="h-8 px-2 text-xs transition-colors" style={{ color: 'var(--clay-muted)' }}>
                   取消
                 </button>
               </>
             ) : (
-              <button onClick={selectAll} className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <button onClick={selectAll} className="h-8 px-2 text-xs transition-colors" style={{ color: 'var(--clay-muted)' }}>
                 全选
               </button>
             )}
@@ -110,10 +112,10 @@ export default function InboxPage() {
 
         {loading && (
           <div className="flex items-center justify-center py-16">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-[hsl(var(--primary))]" style={{ borderRadius: '999px' }} />
+            <div className="h-6 w-6 animate-spin rounded-full border-2" style={{ borderColor: 'var(--clay-hairline)', borderTopColor: 'var(--clay-primary)', borderRadius: '999px' }} />
           </div>
         )}
-        {error && <p className="text-center text-red-400 py-8">{error}</p>}
+        {error && <p className="text-center py-8" style={{ color: 'var(--clay-error)' }}>{error}</p>}
 
         <div className="space-y-2">
           {suggestions.map((s) => (
@@ -131,11 +133,11 @@ export default function InboxPage() {
 
         {!loading && suggestions.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl clay-card">
-              <Inbox className="h-7 w-7 text-muted-foreground" />
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[var(--radius-xl)] clay-card">
+              <Inbox className="h-7 w-7" style={{ color: 'var(--clay-muted)' }} />
             </div>
-            <p className="text-base font-medium text-muted-foreground">队列已清空</p>
-            <p className="mt-1 text-sm text-muted-foreground/60">投喂新内容后，AI 建议会出现在这里</p>
+            <p className="text-title-md" style={{ color: 'var(--clay-muted)' }}>队列已清空</p>
+            <p className="mt-1 text-body-md" style={{ color: 'var(--clay-muted-soft)' }}>投喂新内容后，AI 建议会出现在这里</p>
           </div>
         )}
 

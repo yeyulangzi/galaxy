@@ -23,7 +23,7 @@ export interface BridgeTaskFile {
 
 const SUBDIRS = ['pending', 'done', 'cancelled', 'archive'] as const
 
-function ensureBridgeDirs(bridgeDir: string): void {
+export function ensureBridgeDirs(bridgeDir: string): void {
   for (const sub of SUBDIRS) {
     const dirPath = path.join(bridgeDir, sub)
     if (!fs.existsSync(dirPath)) {

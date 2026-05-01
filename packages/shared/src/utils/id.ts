@@ -13,7 +13,7 @@ const nano = customAlphabet(alphabet, 12)
  * @example generateId('n') // => 'n_a3k9p2mq7r4x'
  * @example generateId('e') // => 'e_xyz...'
  */
-export function generateId(prefix: 'n' | 'e' | 'a' | 's' | 'f' | 'r' | 'd' | 'm' | 'l' | 'o'): string {
+export function generateId(prefix: 'n' | 'e' | 'a' | 's' | 'f' | 'r' | 'd' | 'm' | 'l' | 'o' | 'pref'): string {
   return `${prefix}_${nano()}`
 }
 
