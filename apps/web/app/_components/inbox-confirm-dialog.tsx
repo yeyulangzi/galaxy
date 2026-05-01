@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { Suggestion } from '@galaxy/shared'
 import { Button } from '@/components/ui/button'
@@ -28,19 +28,14 @@ export function InboxConfirmDialog({ suggestion, open, onOpenChange, onConfirm }
   const [summary, setSummary] = useState('')
   const [domain, setDomain] = useState('')
 
-  const resetForm = () => {
-    if (payload) {
+  useEffect(() => {
+    if (open && payload) {
       setTitle(payload.title ?? '')
       setSummary(payload.summary ?? '')
       setDomain(payload.domain ?? '')
+      setDecisionNote('')
     }
-    setDecisionNote('')
-  }
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (nextOpen) resetForm()
-    onOpenChange(nextOpen)
-  }
+  }, [open, suggestion])
 
   const handleSubmit = async () => {
     setSubmitting(true)
@@ -56,7 +51,7 @@ export function InboxConfirmDialog({ suggestion, open, onOpenChange, onConfirm }
   if (!suggestion) return null
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>修改后接受</DialogTitle>
