@@ -43,6 +43,13 @@
       "when": 1777797060000,
       "tag": "0005_add_thinking_budget",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1777900000000,
+      "tag": "0006_add_sources",
+      "breakpoints": true
     }
   ]
 }

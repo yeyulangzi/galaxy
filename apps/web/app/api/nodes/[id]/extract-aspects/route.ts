@@ -54,7 +54,7 @@ export async function POST(
 
   // 将附件内容构造为伪对话消息来调用提取
   const pseudoConversation = [
-    { role: 'user', content: `以下是关于「${node.title}」的一份文档/附件内容，请从中提取维度信息：\n\n${content.trim()}` },
+    { role: 'user', content: `以下是关于「${node.title}」的一份相关文档内容，请从中提取维度信息：\n\n${content.trim()}` },
   ]
 
   const extractResult = await extractAspectsFromConversation(
@@ -119,7 +119,7 @@ export async function POST(
       operation: 'extract_aspects',
       affected_ids: JSON.stringify([nodeId]),
       payload_snapshot: null,
-      user_note: `AI 从附件提取切面：${createdCount} 个新建、${updatedCount} 个更新 (节点「${node.title}」)`,
+      user_note: `AI 从文档提取切面：${createdCount} 个新建、${updatedCount} 个更新 (节点「${node.title}」)`,
       created_at: nowIso(),
     })
     .run()

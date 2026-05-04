@@ -66,7 +66,7 @@ export async function POST(
       operation: 'create_attachment',
       affected_ids: JSON.stringify([id]),
       payload_snapshot: null,
-      user_note: `添加附件「${parsed.data.title}」`,
+      user_note: `添加文档「${parsed.data.title}」`,
       created_at: nowIso(),
     })
     .run()
@@ -75,8 +75,40 @@ export async function POST(
 }
 
 /**
+ * PATCH /api/nodes/[id]/attachments
+ * 更新附件内容（标题 / 正文）。
+ */
+export async function PATCH(req: NextRequest) {
+  ensureDb()
+  const db = getDb()
+  const body = await req.json().catch(() => ({}))
+  const { attachmentId, title, content_or_url } = body as { attachmentId?: string; title?: string; content_or_url?: string }
+  if (!attachmentId) {
+    return NextResponse.json({ error: 'attachmentId required' }, { status: 400 })
+  }
+  const existing = db.select().from(nodeAttachments).where(eq(nodeAttachments.id, attachmentId)).get()
+  if (!existing) return NextResponse.json({ error: 'attachment not found' }, { status: 404 })
+
+  const updates: Record<string, string> = {}
+  if (title !== undefined) updates.title = title
+  if (content_or_url !== undefined) updates.content_or_url = content_or_url
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: 'nothing to update' }, { status: 400 })
+  }
+
+  db.update(nodeAttachments)
+    .set(updates)
+    .where(eq(nodeAttachments.id, attachmentId))
+    .run()
+
+  const updated = db.select().from(nodeAttachments).where(eq(nodeAttachments.id, attachmentId)).get()
+  return NextResponse.json({ data: updated })
+}
+
+/**
  * DELETE /api/nodes/[id]/attachments?attachmentId=xxx
- * 删除附件。
+ * 删除文档。
  */
 export async function DELETE(req: NextRequest) {
   ensureDb()
@@ -96,7 +128,7 @@ export async function DELETE(req: NextRequest) {
       operation: 'delete_attachment',
       affected_ids: JSON.stringify([attachmentId]),
       payload_snapshot: JSON.stringify({ attachment: existing }),
-      user_note: `删除附件「${existing.title}」`,
+      user_note: `删除文档「${existing.title}」`,
       created_at: nowIso(),
     })
     .run()

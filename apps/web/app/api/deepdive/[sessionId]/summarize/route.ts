@@ -193,7 +193,7 @@ export async function POST(
   const fileContent = `# ${summary.title}\n\n> 节点：${node.title} | 生成于 ${now}\n\n${summary.markdown}`
   fs.writeFileSync(filePath, fileContent, 'utf-8')
 
-  // 同时写入 nodeAttachments 表，让总结出现在节点附件列表中
+  // 同时写入 nodeAttachments 表，让总结出现在节点相关文档列表中
   const attachmentId = generateId('a')
   db.insert(nodeAttachments)
     .values({

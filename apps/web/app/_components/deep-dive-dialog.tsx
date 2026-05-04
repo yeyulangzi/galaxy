@@ -289,7 +289,7 @@ export function DeepDiveDialog({
     if (!targetSessionId) return
 
     if (activeSummarizeModes.has(mode)) {
-      const modeLabel = mode === 'feed' ? '投喂数据' : mode === 'extract-aspects' ? '提取切面' : '总结附件'
+      const modeLabel = mode === 'feed' ? '投喂数据' : mode === 'extract-aspects' ? '提取切面' : '总结为相关文档'
       toast.info(`${modeLabel}任务进行中，请稍候…`)
       return
     }
@@ -302,7 +302,7 @@ export function DeepDiveDialog({
       } else if (result.mode === 'extract-aspects') {
         toast.success('正在后台提取切面，稍后刷新即可查看')
       } else {
-        toast.success('总结已生成并写入附件')
+        toast.success('总结已生成并写入相关文档')
       }
     } catch {
       toast.error('操作失败')
@@ -492,14 +492,14 @@ export function DeepDiveDialog({
                   variant="outline"
                   size="sm"
                   onClick={() => handleSummarize('aspect')}
-                  title="生成总结附件，标注时间"
+                  title="生成总结为相关文档，标注时间"
                 >
                   {activeSummarizeModes.has('aspect') ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
                     <FileText className="h-3.5 w-3.5" />
                   )}
-                  总结附件
+                  总结文档
                 </Button>
                 <Button
                   variant="outline"

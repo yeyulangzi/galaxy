@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
-import { MessageCircle, X, FileText, Link2, Trash2, Edit3, Plus, Save, Clock, ChevronLeft, Loader2, Upload, Download } from 'lucide-react'
+import { MessageCircle, X, FileText, Link2, Trash2, Edit3, Plus, Save, Clock, ChevronLeft, Loader2, Upload, Download, ExternalLink } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -24,6 +24,7 @@ import type {
   InternalizationStatus,
   AspectSourceType,
   EdgeOrigin,
+  Source,
 } from '@galaxy/shared'
 import coreDomains from '@/config/core-domains.json'
 import { DeepDiveDialog } from './deep-dive-dialog'
@@ -189,6 +190,13 @@ export function NodeDetailPanel() {
   const [sessions, setSessions] = useState<DeepDiveSession[]>([])
   const [historySessionId, setHistorySessionId] = useState<string | undefined>(undefined)
 
+  /* Block 6: Sources & Document Viewer */
+  const [nodeSources, setNodeSources] = useState<Array<Source & { excerpt: string | null; link_created_at: string }>>([])
+  const [viewingSource, setViewingSource] = useState<(Source & { excerpt: string | null; link_created_at: string }) | null>(null)
+  const [docEditContent, setDocEditContent] = useState('')
+  const [docIsEditing, setDocIsEditing] = useState(false)
+  const [docSaving, setDocSaving] = useState(false)
+
   /* ═══════════════════ effects ═══════════════════ */
 
   useEffect(() => {
@@ -233,6 +241,15 @@ export function NodeDetailPanel() {
     }).catch(() => {})
     return () => { cancelled = true }
   }, [node?.id, deepDiveOpen])
+
+  useEffect(() => {
+    if (!node) return
+    let cancelled = false
+    api.getNodeSources(node.id).then((data) => {
+      if (!cancelled) setNodeSources(data)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [node?.id])
 
   /* ═══════════════════ handlers ═══════════════════ */
 
@@ -440,26 +457,26 @@ export function NodeDetailPanel() {
       setNewAttachTitle('')
       setNewAttachContent('')
       setShowAddAttachment(false)
-      toast.success('附件已添加')
+      toast.success('文档已添加')
 
       // 如果开启了自动提取维度，异步调用
       if (autoExtractAspects && newAttachType === 'md') {
         extractAspectsFromContent(savedContent, savedAttachmentId)
       }
     } catch {
-      toast.error('添加附件失败')
+      toast.error('添加文档失败')
     }
   }, [node, newAttachType, newAttachTitle, newAttachContent, autoExtractAspects, extractAspectsFromContent])
 
   const handleDeleteAttachment = useCallback(async (attachmentId: string) => {
     if (!node) return
     const attachment = attachments.find((a) => a.id === attachmentId)
-    if (!confirm(`确认删除附件「${attachment?.title ?? ''}」？`)) return
+    if (!confirm(`确认删除文档「${attachment?.title ?? ''}」？`)) return
     try {
       const res = await fetch(`/api/nodes/${node.id}/attachments?attachmentId=${attachmentId}`, { method: 'DELETE' })
       const json = await res.json() as { data: { id: string; operation_log_id?: string } }
       setAttachments((prev) => prev.filter((a) => a.id !== attachmentId))
-      toast.success(`附件「${attachment?.title ?? ''}」已删除`, {
+      toast.success(`文档「${attachment?.title ?? ''}」已删除`, {
         duration: 8000,
         action: json.data.operation_log_id ? {
           label: '撤销',
@@ -474,7 +491,7 @@ export function NodeDetailPanel() {
         } : undefined,
       })
     } catch {
-      toast.error('删除附件失败')
+      toast.error('删除文档失败')
     }
   }, [node, attachments])
 
@@ -965,71 +982,113 @@ export function NodeDetailPanel() {
           </div>
       </div>
 
-      {/* ═══ 附件 卡片 ═══ */}
+      {/* ═══ 相关文档 卡片（合并附件 + 来源文档）═══ */}
       <div className="p-4 space-y-2" style={cardStyle}>
-          <SectionTitle>📎 附件</SectionTitle>
-          {attachments.length === 0 && (
-            <p className="text-caption" style={{ color: 'var(--clay-muted-soft)' }}>暂无附件</p>
+          <SectionTitle>📄 相关文档</SectionTitle>
+          {attachments.length === 0 && nodeSources.length === 0 && (
+            <p className="text-caption" style={{ color: 'var(--clay-muted-soft)' }}>暂无相关文档</p>
           )}
-          <div className="space-y-1">
-            {attachments.map((attachment) => (
-              <div
-                key={attachment.id}
-                className="flex items-center gap-2 px-3 py-2 group"
-                style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--clay-hairline-soft)' }}
-              >
-                <span className="shrink-0">{ATTACHMENT_TYPE_ICON[attachment.type] ?? '📄'}</span>
-                <button type="button" onClick={() => handleAttachmentClick(attachment)} className="flex-1 truncate text-body-sm text-left" style={{ color: 'var(--clay-ink)' }}>
-                  {attachment.title}
-                </button>
-                {attachment.type === 'md' && (
+
+          {/* 来源文档 */}
+          {nodeSources.length > 0 && (
+            <div className="space-y-1.5">
+              {nodeSources.map((source) => (
+                <div
+                  key={`src-${source.id}`}
+                  className="flex items-center gap-2 px-3 py-2 cursor-pointer group transition-colors hover:bg-[var(--clay-surface-ghost)]"
+                  style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--clay-hairline-soft)' }}
+                  onClick={() => setViewingSource(source)}
+                >
+                  <span
+                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0"
+                    style={{ background: 'var(--clay-primary-ghost)', color: 'var(--clay-primary)' }}
+                  >
+                    来源
+                  </span>
+                  <span className="flex-1 truncate text-body-sm font-medium" style={{ color: 'var(--clay-ink)' }}>
+                    {source.title}
+                  </span>
+                  {source.url && (
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ color: 'var(--clay-primary)' }}
+                      title="打开原文链接"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 手动添加的文档（原附件） */}
+          {attachments.length > 0 && (
+            <div className="space-y-1">
+              {attachments.map((attachment) => (
+                <div
+                  key={`att-${attachment.id}`}
+                  className="flex items-center gap-2 px-3 py-2 group"
+                  style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--clay-hairline-soft)' }}
+                >
+                  <span className="shrink-0">{ATTACHMENT_TYPE_ICON[attachment.type] ?? '📄'}</span>
+                  <button type="button" onClick={() => handleAttachmentClick(attachment)} className="flex-1 truncate text-body-sm text-left" style={{ color: 'var(--clay-ink)' }}>
+                    {attachment.title}
+                  </button>
+                  {attachment.type === 'md' && (
+                    <button
+                      type="button"
+                      onClick={() => extractAspectsFromContent(attachment.content_or_url, attachment.id)}
+                      disabled={extractingAspects === attachment.id}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ color: extractingAspects === attachment.id ? 'var(--clay-primary)' : 'var(--clay-muted)' }}
+                      title="提取维度信息"
+                    >
+                      {extractingAspects === attachment.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <FileText className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => extractAspectsFromContent(attachment.content_or_url, attachment.id)}
-                    disabled={extractingAspects === attachment.id}
+                    onClick={() => {
+                      if (attachment.type === 'link') {
+                        window.open(attachment.content_or_url, '_blank')
+                      } else {
+                        const blob = new Blob([attachment.content_or_url], { type: 'text/markdown;charset=utf-8' })
+                        const url = URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = `${attachment.title.replace(/[\/\\:*?"<>|]/g, '_')}.md`
+                        document.body.appendChild(a)
+                        a.click()
+                        document.body.removeChild(a)
+                        URL.revokeObjectURL(url)
+                      }
+                    }}
                     className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ color: extractingAspects === attachment.id ? 'var(--clay-primary)' : 'var(--clay-muted)' }}
-                    title="提取维度信息"
+                    style={{ color: 'var(--clay-muted)' }}
+                    title={attachment.type === 'link' ? '打开链接' : '下载到本地'}
                   >
-                    {extractingAspects === attachment.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <FileText className="h-3.5 w-3.5" />
-                    )}
+                    <Download className="h-3.5 w-3.5" />
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (attachment.type === 'link') {
-                      window.open(attachment.content_or_url, '_blank')
-                    } else {
-                      const blob = new Blob([attachment.content_or_url], { type: 'text/markdown;charset=utf-8' })
-                      const url = URL.createObjectURL(blob)
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = `${attachment.title.replace(/[\/\\:*?"<>|]/g, '_')}.md`
-                      document.body.appendChild(a)
-                      a.click()
-                      document.body.removeChild(a)
-                      URL.revokeObjectURL(url)
-                    }
-                  }}
-                  className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ color: 'var(--clay-muted)' }}
-                  title={attachment.type === 'link' ? '打开链接' : '下载到本地'}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                </button>
-                <button type="button" onClick={() => handleDeleteAttachment(attachment.id)} className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--clay-muted)' }} title="删除">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
+                  <button type="button" onClick={() => handleDeleteAttachment(attachment.id)} className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--clay-muted)' }} title="删除">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <Button variant="ghost" size="sm" onClick={() => setShowAddAttachment(true)} className="rounded-[var(--radius-md)]">
             <Plus className="h-3.5 w-3.5 mr-1" />
-            添加附件
+            添加文档
           </Button>
       </div>
 
@@ -1156,8 +1215,8 @@ export function NodeDetailPanel() {
         </div>
       </Overlay>
 
-      {/* Add attachment */}
-      <Overlay open={showAddAttachment} onClose={() => setShowAddAttachment(false)} title="添加附件">
+      {/* Add document */}
+      <Overlay open={showAddAttachment} onClose={() => setShowAddAttachment(false)} title="添加文档">
         <div className="space-y-3">
           <div className="space-y-1">
             <Label htmlFor="attachType">类型</Label>
@@ -1175,7 +1234,7 @@ export function NodeDetailPanel() {
           </div>
           <div className="space-y-1">
             <Label htmlFor="attachTitle">标题</Label>
-            <Input id="attachTitle" value={newAttachTitle} onChange={(e) => setNewAttachTitle(e.target.value)} placeholder="附件标题" />
+            <Input id="attachTitle" value={newAttachTitle} onChange={(e) => setNewAttachTitle(e.target.value)} placeholder="文档标题" />
           </div>
           <div className="space-y-1">
             <Label htmlFor="attachContent">{newAttachType === 'md' ? '内容' : 'URL'}</Label>
@@ -1263,11 +1322,197 @@ export function NodeDetailPanel() {
         </div>
       </Overlay>
 
-      {/* Attachment markdown preview */}
-      <Overlay open={!!previewAttachment} onClose={() => setPreviewAttachment(null)} title={previewAttachment?.title ?? '预览'}>
-        <div className="prose prose-sm max-w-none whitespace-pre-wrap text-body-md leading-relaxed max-h-[60vh] overflow-y-auto" style={{ color: 'var(--clay-body)' }}>
-          {previewAttachment?.content_or_url ?? ''}
-        </div>
+      {/* Document viewer / editor — for attachments (md editable, link readonly) */}
+      <Overlay
+        open={!!previewAttachment}
+        onClose={() => { setPreviewAttachment(null); setDocIsEditing(false) }}
+        title={previewAttachment?.title ?? '预览'}
+      >
+        {previewAttachment && (
+          <div className="flex flex-col" style={{ minHeight: '40vh' }}>
+            {docIsEditing ? (
+              <Textarea
+                value={docEditContent}
+                onChange={(e) => setDocEditContent(e.target.value)}
+                className="flex-1 bg-transparent resize-none text-body-sm leading-relaxed font-mono"
+                style={{ minHeight: '50vh' }}
+                autoFocus
+              />
+            ) : (
+              <div
+                className="prose prose-sm max-w-none whitespace-pre-wrap text-body-md leading-relaxed max-h-[60vh] overflow-y-auto"
+                style={{ color: 'var(--clay-body)' }}
+              >
+                {previewAttachment.content_or_url}
+              </div>
+            )}
+            {previewAttachment.type === 'md' && (
+              <div className="flex items-center justify-between pt-3 mt-3" style={{ borderTop: '1px solid var(--clay-hairline-soft)' }}>
+                <span className="text-caption" style={{ color: 'var(--clay-muted-soft)' }}>
+                  {docIsEditing ? `${docEditContent.length} 字` : `${previewAttachment.content_or_url.length} 字`}
+                </span>
+                <div className="flex gap-2">
+                  {docIsEditing ? (
+                    <>
+                      <Button variant="ghost" size="sm" onClick={() => { setDocIsEditing(false); setDocEditContent('') }}>取消</Button>
+                      <Button
+                        size="sm"
+                        disabled={docSaving || docEditContent === previewAttachment.content_or_url}
+                        onClick={async () => {
+                          if (!node) return
+                          setDocSaving(true)
+                          try {
+                            const res = await fetch(`/api/nodes/${node.id}/attachments`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ attachmentId: previewAttachment.id, content_or_url: docEditContent }),
+                            })
+                            const json = (await res.json()) as { data: Attachment }
+                            setAttachments((prev) => prev.map((a) => a.id === json.data.id ? json.data : a))
+                            setPreviewAttachment(json.data)
+                            setDocIsEditing(false)
+                            toast.success('已保存')
+                          } catch {
+                            toast.error('保存失败')
+                          } finally {
+                            setDocSaving(false)
+                          }
+                        }}
+                      >
+                        {docSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />保存中…</> : '保存'}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setDocEditContent(previewAttachment.content_or_url); setDocIsEditing(true) }}
+                    >
+                      <Edit3 className="h-3.5 w-3.5 mr-1" />编辑
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Overlay>
+
+      {/* Source document viewer / editor */}
+      <Overlay
+        open={!!viewingSource}
+        onClose={() => { setViewingSource(null); setDocIsEditing(false) }}
+        title={viewingSource?.title ?? '来源文档'}
+      >
+        {viewingSource && (
+          <div className="flex flex-col" style={{ minHeight: '40vh' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                style={{ background: 'var(--clay-primary-ghost)', color: 'var(--clay-primary)' }}
+              >
+                来源
+              </span>
+              <span
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px]"
+                style={{ background: 'var(--clay-surface-ghost)', color: 'var(--clay-muted)' }}
+              >
+                {viewingSource.type}
+              </span>
+              <span className="text-caption" style={{ color: 'var(--clay-muted)' }}>
+                关联于 {new Date(viewingSource.link_created_at).toLocaleString()}
+              </span>
+              {viewingSource.url && (
+                <a
+                  href={viewingSource.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-auto inline-flex items-center gap-1 text-caption"
+                  style={{ color: 'var(--clay-primary)' }}
+                >
+                  <ExternalLink className="h-3 w-3" />打开原文
+                </a>
+              )}
+            </div>
+            {viewingSource.excerpt && !docIsEditing && (
+              <div
+                className="rounded-md p-3 text-body-sm italic border-l-2 mb-3"
+                style={{
+                  background: 'var(--clay-surface-ghost)',
+                  borderColor: 'var(--clay-primary-ghost)',
+                  color: 'var(--clay-muted)',
+                }}
+              >
+                {viewingSource.excerpt}
+              </div>
+            )}
+            {docIsEditing ? (
+              <Textarea
+                value={docEditContent}
+                onChange={(e) => setDocEditContent(e.target.value)}
+                className="flex-1 bg-transparent resize-none text-body-sm leading-relaxed font-mono"
+                style={{ minHeight: '50vh' }}
+                autoFocus
+              />
+            ) : viewingSource.content ? (
+              <div
+                className="whitespace-pre-wrap text-body-md leading-relaxed max-h-[60vh] overflow-y-auto flex-1"
+                style={{ color: 'var(--clay-body)' }}
+              >
+                {viewingSource.content}
+              </div>
+            ) : (
+              <p className="text-caption" style={{ color: 'var(--clay-muted-soft)' }}>暂无原文内容</p>
+            )}
+            <div className="flex items-center justify-between pt-3 mt-3" style={{ borderTop: '1px solid var(--clay-hairline-soft)' }}>
+              <span className="text-caption" style={{ color: 'var(--clay-muted-soft)' }}>
+                {docIsEditing ? `${docEditContent.length} 字` : `${(viewingSource.content ?? '').length} 字`}
+              </span>
+              <div className="flex gap-2">
+                {docIsEditing ? (
+                  <>
+                    <Button variant="ghost" size="sm" onClick={() => { setDocIsEditing(false); setDocEditContent('') }}>取消</Button>
+                    <Button
+                      size="sm"
+                      disabled={docSaving || docEditContent === (viewingSource.content ?? '')}
+                      onClick={async () => {
+                        setDocSaving(true)
+                        try {
+                          const res = await fetch(`/api/sources/${viewingSource.id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ content: docEditContent }),
+                          })
+                          const json = (await res.json()) as { data: Source }
+                          setNodeSources((prev) => prev.map((s) =>
+                            s.id === json.data.id ? { ...s, ...json.data } : s
+                          ))
+                          setViewingSource((prev) => prev ? { ...prev, ...json.data } : null)
+                          setDocIsEditing(false)
+                          toast.success('已保存')
+                        } catch {
+                          toast.error('保存失败')
+                        } finally {
+                          setDocSaving(false)
+                        }
+                      }}
+                    >
+                      {docSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />保存中…</> : '保存'}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setDocEditContent(viewingSource.content ?? ''); setDocIsEditing(true) }}
+                  >
+                    <Edit3 className="h-3.5 w-3.5 mr-1" />编辑
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </Overlay>
 
       {/* DeepDiveDialog — preserved */}

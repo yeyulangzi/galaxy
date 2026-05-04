@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@galaxy/db'
-import { suggestions, nodes, edges, aspects, operationLogs } from '@galaxy/db/schema'
+import { suggestions, nodes, edges, aspects, operationLogs, sources, sourceNodeLinks } from '@galaxy/db/schema'
 import { eq, and, inArray } from 'drizzle-orm'
 import { generateId, nowIso, slugify } from '@galaxy/shared'
 import { collectFeedback, loadAspectTemplates } from '@galaxy/ai'
@@ -94,6 +94,31 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         })
         .run()
       createdEntities.push({ type: 'node', id: nodeId })
+
+      // 自动建立 source_node_link 溯源关系
+      if (suggestion.source_ref_id) {
+        const linkedSource = db
+          .select()
+          .from(sources)
+          .where(eq(sources.feed_item_id, suggestion.source_ref_id))
+          .get()
+        if (linkedSource) {
+          try {
+            db.insert(sourceNodeLinks)
+              .values({
+                id: generateId('snl'),
+                source_id: linkedSource.id,
+                node_id: nodeId,
+                excerpt: payloadObj.excerpt ?? null,
+                created_at: now,
+              })
+              .run()
+            createdEntities.push({ type: 'source_link', id: linkedSource.id })
+          } catch {
+            // UNIQUE 冲突静默跳过
+          }
+        }
+      }
 
       const suggestedEdges = payloadObj.suggested_edges ?? []
       for (const se of suggestedEdges) {
@@ -279,7 +304,32 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           }
         }
 
-        // Delete secondary nodes (cascade will clean up remaining edges)
+        // Migrate source_node_links from secondary nodes to primary
+        for (const secId of secondaryIds) {
+          const secondaryLinks = db
+            .select()
+            .from(sourceNodeLinks)
+            .where(eq(sourceNodeLinks.node_id, secId))
+            .all()
+          for (const link of secondaryLinks) {
+            try {
+              db.insert(sourceNodeLinks)
+                .values({
+                  id: generateId('snl'),
+                  source_id: link.source_id,
+                  node_id: primaryNode.id,
+                  excerpt: link.excerpt,
+                  position: link.position,
+                  created_at: link.created_at,
+                })
+                .run()
+            } catch {
+              // UNIQUE 冲突（同一 source 已关联 primary）则跳过
+            }
+          }
+        }
+
+        // Delete secondary nodes (cascade will clean up remaining edges & source_node_links)
         for (const secId of secondaryIds) {
           db.delete(nodes).where(eq(nodes.id, secId)).run()
         }

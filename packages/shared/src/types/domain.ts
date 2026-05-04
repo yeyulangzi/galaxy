@@ -235,3 +235,32 @@ export interface AiCallLog {
   error_message: string | null
   created_at: string
 }
+
+/** 来源文档类型 */
+export const SOURCE_TYPES = ['article', 'note', 'url', 'pdf'] as const
+export type SourceType = (typeof SOURCE_TYPES)[number]
+
+/**
+ * 来源文档 —— `sources` 表的镜像。
+ */
+export interface Source {
+  id: string
+  title: string
+  type: SourceType
+  content: string | null
+  url: string | null
+  feed_item_id: string | null
+  created_at: string
+}
+
+/**
+ * 来源-节点关联 —— `source_node_links` 表的镜像。
+ */
+export interface SourceNodeLink {
+  id: string
+  source_id: string
+  node_id: string
+  excerpt: string | null
+  position: number | null
+  created_at: string
+}

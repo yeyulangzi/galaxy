@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@galaxy/db'
-import { feedItems, settings, operationLogs } from '@galaxy/db/schema'
+import { feedItems, settings, operationLogs, sources } from '@galaxy/db/schema'
 import { generateId, nowIso } from '@galaxy/shared'
 import { eq } from 'drizzle-orm'
 import { ensureDb } from '@/lib/api/ensure-db'
@@ -107,10 +107,33 @@ export async function POST(req: NextRequest) {
   try {
     const parsedContent = await parseContent(parsed.data)
 
+    // 同步创建 source 文档记录，建立投喂内容与图谱节点的溯源关系
+    const sourceTypeMap: Record<string, 'article' | 'note' | 'url' | 'pdf'> = {
+      text: 'note',
+      url: 'article',
+      file_md: 'article',
+      file_pdf: 'pdf',
+    }
+    const sourceId = generateId('src')
+    const sourceTitle = ('url' in parsed.data && parsed.data.url)
+      ? new URL(parsed.data.url).hostname + ' - ' + parsedContent.slice(0, 40).replace(/\n/g, ' ')
+      : parsedContent.slice(0, 50).replace(/\n/g, ' ')
+    db.insert(sources)
+      .values({
+        id: sourceId,
+        title: sourceTitle,
+        type: sourceTypeMap[parsed.data.type] ?? 'note',
+        content: parsedContent,
+        url: 'url' in parsed.data ? (parsed.data.url as string) : null,
+        feed_item_id: feedId,
+        created_at: now,
+      })
+      .run()
+
     const settingsRow = db.select().from(settings).where(eq(settings.id, 1)).get()
     if (!settingsRow?.enable_feed_ai) {
       db.update(feedItems).set({ status: 'done', suggestions_count: 0 }).where(eq(feedItems.id, feedId)).run()
-      return NextResponse.json({ data: { feed_item_id: feedId, suggestions_count: 0, suggestions: [] } })
+      return NextResponse.json({ data: { feed_item_id: feedId, source_id: sourceId, suggestions_count: 0, suggestions: [] } })
     }
 
     const { registry, defaultProvider, defaultModel } = buildRegistry()
@@ -131,6 +154,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       data: {
         feed_item_id: feedId,
+        source_id: sourceId,
         suggestions_count: result.suggestionsCreated,
         cost_usd: result.costUsd,
         duration_ms: result.durationMs,

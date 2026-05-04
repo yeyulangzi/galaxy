@@ -1,4 +1,4 @@
-import type { Node, Edge, Suggestion, Aspect } from '@galaxy/shared'
+import type { Node, Edge, Suggestion, Aspect, Source, SourceNodeLink } from '@galaxy/shared'
 import type { CreateNodeInput, UpdateNodeInput, CreateEdgeInput } from './schemas'
 
 export interface DeepDiveMessage {
@@ -63,7 +63,25 @@ export const api = {
   // Feed
   submitFeed: (input: { type: string; content?: string; url?: string }) =>
     fetch('/api/feed', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input) }).then((r) =>
-      handle<{ feed_item_id: string; suggestions_count: number; cost_usd?: number; duration_ms?: number }>(r),
+      handle<{ feed_item_id: string; source_id: string; suggestions_count: number; cost_usd?: number; duration_ms?: number }>(r),
+    ),
+
+  // Sources
+  listSources: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+    return fetch(`/api/sources${qs}`).then(async (r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const json = await r.json()
+      return json as { data: Source[]; meta: { total: number; page: number; limit: number } }
+    })
+  },
+  getSource: (id: string) =>
+    fetch(`/api/sources/${id}`).then((r) =>
+      handle<Source & { linked_nodes: Array<{ node_id: string; node_title: string; excerpt: string | null; created_at: string }> }>(r),
+    ),
+  getNodeSources: (nodeId: string) =>
+    fetch(`/api/nodes/${nodeId}/sources`).then((r) =>
+      handle<Array<Source & { excerpt: string | null; link_created_at: string }>>(r),
     ),
 
   // Inbox

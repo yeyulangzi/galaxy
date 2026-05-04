@@ -22,6 +22,7 @@ export const NewNodeExtractionSchema = z.object({
   channel: z.enum(['core', 'light']),
   confidence: z.number().min(0).max(1),
   rationale: z.string(),
+  excerpt: z.string().optional().describe('原文中支持该节点抽取的关键段落摘录，用于溯源'),
   suggested_edges: z.array(SuggestedEdgeSchema),
 })
 
