@@ -163,6 +163,28 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         } catch {
           // UNIQUE 冲突静默跳过
         }
+
+        // 为边两端的节点自动补建 source_node_link
+        if (suggestion.source_ref_id) {
+          const linkedSource = db.select().from(sources).where(eq(sources.feed_item_id, suggestion.source_ref_id)).get()
+          if (linkedSource) {
+            for (const edgeNode of [sourceNode, targetNode]) {
+              try {
+                db.insert(sourceNodeLinks)
+                  .values({
+                    id: generateId('snl'),
+                    source_id: linkedSource.id,
+                    node_id: edgeNode.id,
+                    excerpt: payloadObj.excerpt ?? null,
+                    created_at: now,
+                  })
+                  .run()
+              } catch {
+                // UNIQUE 冲突静默跳过
+              }
+            }
+          }
+        }
       }
     } else if (suggestion.type === 'fill_aspect') {
       const targetNode = db.select().from(nodes).where(eq(nodes.title, payloadObj.node_title)).get()
@@ -204,6 +226,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             createdEntities.push({ type: 'aspect', id: aspectId })
           }
         }
+
+        // 为 fill_aspect 的目标节点自动补建 source_node_link
+        if (suggestion.source_ref_id) {
+          const linkedSource = db.select().from(sources).where(eq(sources.feed_item_id, suggestion.source_ref_id)).get()
+          if (linkedSource) {
+            try {
+              db.insert(sourceNodeLinks)
+                .values({ id: generateId('snl'), source_id: linkedSource.id, node_id: targetNode.id, excerpt: payloadObj.excerpt ?? null, created_at: now })
+                .run()
+            } catch { /* UNIQUE 冲突静默跳过 */ }
+          }
+        }
       }
     } else if (suggestion.type === 'update_aspect') {
       const targetNode = db.select().from(nodes).where(eq(nodes.title, payloadObj.node_title)).get()
@@ -240,6 +274,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               })
               .run()
             createdEntities.push({ type: 'aspect', id: aspectId })
+          }
+        // 为 update_aspect 的目标节点自动补建 source_node_link
+        if (suggestion.source_ref_id) {
+          const linkedSource = db.select().from(sources).where(eq(sources.feed_item_id, suggestion.source_ref_id)).get()
+          if (linkedSource) {
+            try {
+              db.insert(sourceNodeLinks)
+                .values({ id: generateId('snl'), source_id: linkedSource.id, node_id: targetNode.id, excerpt: payloadObj.excerpt ?? null, created_at: now })
+                .run()
+            } catch { /* UNIQUE 冲突静默跳过 */ }
           }
         }
       }
