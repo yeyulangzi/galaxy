@@ -5,12 +5,12 @@
  */
 
 import { getDb } from '@galaxy/db'
-import { edges, nodes, settings } from '@galaxy/db/schema'
-import { eq } from 'drizzle-orm'
+import { edges, nodes, settings, sources, sourceNodeLinks, suggestions } from '@galaxy/db/schema'
+import { eq, and, isNull, inArray } from 'drizzle-orm'
 import { ProviderRegistry, backfillEdgesForNode, generateEdgeDescription } from '@galaxy/ai'
 import type { BackfillNodeInfo } from '@galaxy/ai'
 
-export type TaskPhase = 'backfilling' | 'regenerating' | 'completed' | 'failed'
+export type TaskPhase = 'backfilling' | 'regenerating' | 'linking_sources' | 'completed' | 'failed'
 
 export interface RefreshTaskProgress {
   current: number
@@ -22,6 +22,7 @@ export interface RefreshTaskResult {
   scanned: number
   updated: number
   totalEdges: number
+  linkedSources?: number
 }
 
 export interface RefreshTask {
@@ -291,6 +292,92 @@ async function runTask(taskId: string, mode: 'incremental' | 'full' = 'full') {
         // 单条失败不中断
       }
     }
+
+    // ═══ Phase 3: 补建 source_node_link 溯源关联 ═══
+    // 遍历已确认的 suggestions，通过 source_ref_id 关联 source，从 payload 解析出 node_id
+    task.phase = 'linking_sources'
+
+    const allSources = db.select().from(sources).all()
+    const existingLinks = db.select().from(sourceNodeLinks).all()
+    const linkedPairs = new Set(existingLinks.map((l) => `${l.source_id}::${l.node_id}`))
+
+    // feed_item_id → source_id 映射
+    const feedItemToSource = new Map<string, string>()
+    for (const src of allSources) {
+      if (src.feed_item_id) {
+        feedItemToSource.set(src.feed_item_id, src.id)
+      }
+    }
+
+    let linkedCount = 0
+
+    if (feedItemToSource.size > 0) {
+      // 查询所有已确认的 suggestions（有 source_ref_id 的）
+      const acceptedSuggestions = db
+        .select()
+        .from(suggestions)
+        .where(inArray(suggestions.status, ['accepted', 'accepted_modified']))
+        .all()
+
+      const relevantSuggestions = acceptedSuggestions.filter(
+        (s) => s.source_ref_id && feedItemToSource.has(s.source_ref_id),
+      )
+
+      task.progress = { current: 0, total: relevantSuggestions.length }
+      const titleToId = new Map(allNodes.map((n) => [n.title, n.id]))
+
+      for (let i = 0; i < relevantSuggestions.length; i++) {
+        const suggestion = relevantSuggestions[i]
+        task.progress.current = i + 1
+
+        const sourceId = feedItemToSource.get(suggestion.source_ref_id!)!
+        const payload = typeof suggestion.payload === 'string'
+          ? JSON.parse(suggestion.payload)
+          : suggestion.payload
+
+        // 根据 suggestion type 解析关联的 node_id 列表
+        const relatedNodeIds: string[] = []
+
+        if (suggestion.type === 'new_node') {
+          // new_node 的节点通过 title 回查（confirm 时才创建，title 是唯一标识）
+          const nodeId = titleToId.get(payload.title)
+          if (nodeId) relatedNodeIds.push(nodeId)
+        } else if (suggestion.type === 'new_edge') {
+          const srcId = titleToId.get(payload.source_title)
+          const tgtId = titleToId.get(payload.target_title)
+          if (srcId) relatedNodeIds.push(srcId)
+          if (tgtId) relatedNodeIds.push(tgtId)
+        } else if (suggestion.type === 'fill_aspect' || suggestion.type === 'update_aspect') {
+          const nodeId = titleToId.get(payload.node_title)
+          if (nodeId) relatedNodeIds.push(nodeId)
+        } else if (suggestion.type === 'update_node') {
+          const nodeId = titleToId.get(payload.title ?? payload.node_title)
+          if (nodeId) relatedNodeIds.push(nodeId)
+        }
+
+        for (const nodeId of relatedNodeIds) {
+          if (linkedPairs.has(`${sourceId}::${nodeId}`)) continue
+          try {
+            const linkId = `snl_rf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
+            db.insert(sourceNodeLinks)
+              .values({
+                id: linkId,
+                source_id: sourceId,
+                node_id: nodeId,
+                excerpt: payload.excerpt ?? null,
+                created_at: new Date().toISOString(),
+              })
+              .run()
+            linkedPairs.add(`${sourceId}::${nodeId}`)
+            linkedCount++
+          } catch {
+            // UNIQUE 冲突静默跳过
+          }
+        }
+      }
+    }
+
+    task.result.linkedSources = linkedCount
 
     task.phase = 'completed'
   } catch (error: unknown) {

@@ -200,11 +200,15 @@ export default function Page() {
             setRefreshEdgesStatus(`补齐关联 ${progress.current}/${progress.total}`)
           } else if (phase === 'regenerating') {
             setRefreshEdgesStatus(`生成描述 ${progress.current}/${progress.total}`)
+          } else if (phase === 'linking_sources') {
+            setRefreshEdgesStatus(`补建溯源 ${progress.current}/${progress.total}`)
           } else if (phase === 'completed') {
             stopPolling()
             setRefreshingEdges(false)
             setRefreshEdgesStatus('')
-            toast.success(`补齐 ${result?.created ?? 0} 条关联，刷新 ${result?.updated ?? 0} 条描述`)
+            const parts = [`补齐 ${result?.created ?? 0} 条关联`, `刷新 ${result?.updated ?? 0} 条描述`]
+            if (result?.linkedSources) parts.push(`补建 ${result.linkedSources} 条溯源`)
+            toast.success(parts.join('，'))
             await loadAll()
           } else if (phase === 'failed') {
             stopPolling()

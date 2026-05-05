@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@galaxy/db'
-import { suggestions, nodes, edges, operationLogs } from '@galaxy/db/schema'
+import { suggestions, nodes, edges, operationLogs, sources, sourceNodeLinks } from '@galaxy/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import { generateId, nowIso, slugify } from '@galaxy/shared'
 import { ensureDb } from '@/lib/api/ensure-db'
@@ -84,8 +84,31 @@ export async function POST(req: NextRequest) {
         if (target && target.id !== nodeId) {
           const edgeId = generateId('e')
           try {
-            db.insert(edges).values({ id: edgeId, source_node_id: nodeId, target_node_id: target.id, relation_type: se.relation_type, created_by: 'ai_feed' }).run()
+            db.insert(edges).values({
+              id: edgeId,
+              source_node_id: nodeId,
+              target_node_id: target.id,
+              relation_type: se.relation_type,
+              weight: suggestion.confidence ?? 0.5,
+              created_by: 'ai_feed',
+            }).run()
             allCreated.push({ type: 'edge', id: edgeId })
+          } catch { /* UNIQUE 冲突跳过 */ }
+        }
+      }
+
+      // 补建 source_node_link 溯源关联
+      if (suggestion.source_ref_id) {
+        const linkedSource = db.select().from(sources).where(eq(sources.feed_item_id, suggestion.source_ref_id)).get()
+        if (linkedSource) {
+          try {
+            db.insert(sourceNodeLinks).values({
+              id: generateId('snl'),
+              source_id: linkedSource.id,
+              node_id: nodeId,
+              excerpt: payloadObj.excerpt ?? null,
+              created_at: now,
+            }).run()
           } catch { /* UNIQUE 冲突跳过 */ }
         }
       }
@@ -95,9 +118,34 @@ export async function POST(req: NextRequest) {
       if (sourceNode && targetNode && sourceNode.id !== targetNode.id) {
         const edgeId = generateId('e')
         try {
-          db.insert(edges).values({ id: edgeId, source_node_id: sourceNode.id, target_node_id: targetNode.id, relation_type: payloadObj.relation_type, created_by: 'ai_feed' }).run()
+          db.insert(edges).values({
+            id: edgeId,
+            source_node_id: sourceNode.id,
+            target_node_id: targetNode.id,
+            relation_type: payloadObj.relation_type,
+            weight: suggestion.confidence ?? 0.5,
+            created_by: 'ai_feed',
+          }).run()
           allCreated.push({ type: 'edge', id: edgeId })
         } catch { /* UNIQUE 冲突跳过 */ }
+
+        // 补建 source_node_link 溯源关联
+        if (suggestion.source_ref_id) {
+          const linkedSource = db.select().from(sources).where(eq(sources.feed_item_id, suggestion.source_ref_id)).get()
+          if (linkedSource) {
+            for (const edgeNode of [sourceNode, targetNode]) {
+              try {
+                db.insert(sourceNodeLinks).values({
+                  id: generateId('snl'),
+                  source_id: linkedSource.id,
+                  node_id: edgeNode.id,
+                  excerpt: payloadObj.excerpt ?? null,
+                  created_at: now,
+                }).run()
+              } catch { /* UNIQUE 冲突跳过 */ }
+            }
+          }
+        }
       }
     }
 
